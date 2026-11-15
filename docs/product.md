@@ -21,7 +21,7 @@ Pocket Buddy helps an individual understand and manage everyday income and expen
 ## Product decisions
 
 - Single currency per user, initially IDR; users may change the display currency later. Existing amounts are not converted automatically. A deliberate conversion workflow is future work.
-- The first interface language is English, with language and currency settings independent.
+- Language and currency settings are independent. The demo can save an English or Indonesian language preference; its interface remains in English until translations are implemented.
 - Available cash is opening balance plus income minus expenses, including uncategorized transactions.
 - Budgets are planning limits and do not themselves change cash balance.
 - No multiple accounts, transfers, CSV import, PDF import, or general-purpose AI assistant in the MVP.
@@ -30,4 +30,4 @@ Pocket Buddy helps an individual understand and manage everyday income and expen
 
 ## Current delivery status
 
-The repository currently contains a development-only responsive dark dashboard prototype with a locked Color split Bifold wallet mark: a narrow full-height light-purple strip at the far left and a circular clasp, set directly beside the wordmark without a tile background. UI work should follow [docs/design-direction.md](design-direction.md) across navigation, transaction entry, budgets, empty states, and confirmations. The prototype uses English and IDR sample data; it is read-only and is not connected to the API. The API has a versioned migration runner and initial registration/login/logout with user-scoped transaction list/create routes. Email verification/reset, account deletion, browser sign-in, transaction editing/deletion, categories UI, functional budgets, recurring workflows, Gemini extraction, export, and seeded demo-account data remain to be implemented. The initial scaffold is not production-ready.
+The web client now contains the MVP route set as an interactive responsive demo with a locked Color split Bifold wallet mark: a narrow full-height light-purple strip at the far left and a circular clasp, set directly beside the wordmark without a tile background. It uses English, IDR sample data, and browser local storage; it does not call the API. Transaction editing/deletion and restore, category and budget management, recurring review, receipt draft review, CSV export, and settings have front-end demo interactions. Authentication and receipt extraction are simulated. UI work should continue to follow [docs/design-direction.md](design-direction.md). The API has a versioned migration runner and initial registration/login/logout with user-scoped transaction list/create routes. Production email verification/reset, account deletion, deployment-grade rate limiting, durable financial data, Gemini extraction, and seeded demo-account support remain outstanding. The initial scaffold is not production-ready.

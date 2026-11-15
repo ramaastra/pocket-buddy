@@ -3,6 +3,7 @@
 ## Chosen stack
 
 - Web client: Next.js, React, TypeScript (`apps/web`). Next.js is the frontend only.
+- Web UI: Mantine for shared interactive controls and surfaces, with project CSS for Pocket Buddy's design. Transaction lists retain their responsive row layout.
 - API: Go with Gin, JSON REST (`services/api`). Business rules and authentication belong here.
 - Database: PostgreSQL. GORM handles routine persistence; schema changes use explicit versioned SQL migrations via `golang-migrate`.
 - Local orchestration: Docker Compose.
@@ -26,4 +27,14 @@ The intended local setup is `docker compose up --build`, with the web app at por
 
 ## Implementation status
 
-This document describes the agreed target architecture. The web client currently renders a development-only English dark UI prototype with compact mobile and desktop layouts plus an editorial alternative; it uses browser-only sample data and does not call the API or provide sign-in screens. The API embeds and applies the versioned SQL migrations at startup, and has initial registration/login/logout endpoints with session middleware for user-scoped transaction routes. Email verification/reset, account deletion, deployment-grade rate limiting, and existing-database adoption are outstanding. Forwarded proxy headers are disabled by default and need explicit trusted-proxy configuration behind a reverse proxy. Resolve these gaps before treating the stack as production-ready or exposing it publicly.
+This document describes the agreed target architecture. The web client now renders the planned dashboard, transaction history/forms/recently-deleted/receipt scan, budget list/form/details, recurring schedule list/form/details, category management, settings, and sign-in/registration/verification/password-reset routes. These are interactive front-end demos backed by sample data in browser local storage; receipt extraction, authentication, and CSV export are simulated or browser-local, and the app does not call the API. The API embeds and applies the versioned SQL migrations at startup, and has initial registration/login/logout endpoints with session middleware for user-scoped transaction routes. Production email verification/reset, account deletion, deployment-grade rate limiting, and existing-database adoption are outstanding. Forwarded proxy headers are disabled by default and need explicit trusted-proxy configuration behind a reverse proxy. Resolve these gaps before treating the stack as production-ready or exposing it publicly.
+
+## List display pattern
+
+Budget and recurring schedule lists share search, domain filters, empty results, and 25-item pagination through ListDisplay. Categories use the same controls but paginate parent groups so children stay with their parent; search includes child names. Transactions retain their date/type/category filters and responsive ledger. Shared pagination exposes previous/next controls and result counts, including on a single page. Controls wrap on mobile while each dataset keeps its existing responsive row presentation. These controls operate on browser-local demo data.
+
+Overview cards show up to five transactions and three budgets, with “View all” links to the full lists. Budget previews prioritize the highest spending-to-limit ratios, including over-budget items first. Overview cards do not paginate or scroll internally.
+
+List pages also offer ascending/descending sorting through the shared dropdown. Ordering applies to all filtered results before pagination; all screen sizes edit sorting alongside filters in the modal. Reset restores the page's default sort, category groups preserve parent/child structure, and transaction CSV export follows the selected order.
+
+Applied list search, filters, sorting, and pagination are stored in URL query parameters. The client subscribes to browser history changes and batches URL updates from one action; search replaces history while applied controls push entries. Modal drafts remain local until applied. Query values are validated before use, and direct links, reload, and browser Back/Forward restore list state.
