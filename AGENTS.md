@@ -9,6 +9,7 @@ This file is the shared entry point for coding agents. Keep project knowledge in
 - [`docs/architecture.md`](docs/architecture.md): service boundaries, stack, local development, and implementation status.
 - [`docs/security.md`](docs/security.md): security requirements and sensitive-data handling.
 - [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md): current work tracking convention.
+- [`docs/agents/git-workflow.md`](docs/agents/git-workflow.md): local Git checkpoints, branches, and confirmation after changes.
 - [`docs/adr/`](docs/adr/): durable technical decisions.
 
 ## Working rules
