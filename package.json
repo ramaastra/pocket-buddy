@@ -1,0 +1,7 @@
+{
+  "name": "pocket-buddy",
+  "private": true,
+  "workspaces": ["apps/*"],
+  "overrides": {"next": {"postcss": "8.5.33"}},
+  "scripts": {"dev:web": "npm --workspace apps/web run dev"}
+}

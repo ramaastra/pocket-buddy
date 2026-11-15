@@ -1,0 +1,12 @@
+.pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; color: var(--text); font-size: 12px; flex-wrap: wrap; }
+.control { min-width: 34px; height: 34px; padding: 0 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+.control:hover { background: rgba(220, 241, 225, .08); }
+.control[data-active] { border-color: rgba(194, 241, 143, .4); background: rgba(194, 241, 143, .12); color: var(--green); }
+.control:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.dots { color: var(--text); }
+
+@media (max-width: 600px) {
+  .pagination { justify-content: center; }
+  .pagination > span { flex-basis: 100%; text-align: center; }
+  .pagination > :last-child { margin-inline: auto; }
+}
