@@ -182,6 +182,9 @@ func deleteCategory(db *gorm.DB) gin.HandlerFunc {
 			if err := tx.Exec("UPDATE recurring_transactions SET category_id = NULL WHERE user_id = ? AND category_id = ? AND deleted_at IS NULL", user, id).Error; err != nil {
 				return err
 			}
+			if err := tx.Exec("UPDATE recurring_occurrences SET category_id = NULL WHERE user_id = ? AND category_id = ? AND status = 'pending' AND deleted_at IS NULL", user, id).Error; err != nil {
+				return err
+			}
 			return tx.Exec("UPDATE categories SET deleted_at = now() WHERE id = ? AND user_id = ? AND deleted_at IS NULL", id, user).Error
 		})
 		switch {

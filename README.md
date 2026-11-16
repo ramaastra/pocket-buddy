@@ -10,4 +10,4 @@ Signed-in financial screens load transactions, categories, budgets and settings 
 
 Run Go checks with `cd services/api && go test ./...`. Database integration tests require `TEST_DATABASE_URL` pointing to an isolated disposable PostgreSQL database. Run the frontend production build with `npm ci && npm run build --workspace apps/web` from the repository root.
 
-Signed-in financial screens currently support IDR transactions, categories, budgets and settings. Recurring schedules are still demo-only; signed-in users see them as unavailable. The browser-local demo is separate and is not imported into accounts. Fractional currencies are not yet supported by the account UI.
+Signed-in financial screens currently support IDR transactions, categories, budgets and settings. Recurring schedules and pending occurrence review are available to signed-in users. The browser-local demo is separate and is not imported into accounts. Fractional currencies are not yet supported by the account UI.
