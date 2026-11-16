@@ -15,6 +15,8 @@ Explicit user instructions to commit or stage the identified work count as confi
 
 Keep the existing main development branch as the stable line. Before a substantial feature, redesign, or risky experiment, check the current branch and working tree, then recommend a short-lived local branch if it would help isolate the work. Explain any existing uncommitted changes that would follow a branch switch and ask for confirmation before creating or switching branches. Continue work that does not depend on the branch decision while waiting. Small, low-risk changes can stay on the current branch.
 
+Name branches for the changes they contain, using a short, descriptive name such as `feat/accounts-transactions-categories` or `fix/session-retry`. Before pushing a branch created by a tool, rename it if its name describes the tool or run rather than the work.
+
 ## Commit messages
 
 Use a short, outcome-focused subject such as `feat: add transaction filters`, `fix: preserve transaction kind`, `docs: document local setup`, or `wip: checkpoint recurring form`. Prefer one coherent change per commit. Review the proposed diff and run checks appropriate to the change before committing; report any checks that could not run.
