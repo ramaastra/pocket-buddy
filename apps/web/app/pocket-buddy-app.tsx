@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { ApiError, apiRequest } from './api';
+import { withBudgetSpending } from './budget-spending';
 import { usePathname, useRouter } from 'next/navigation';
 import { Pagination as MantinePagination, Paper, UnstyledButton, Modal, Popover, Select } from '@mantine/core';
 import paginationStyles from './pagination.module.css';
@@ -20,6 +21,7 @@ import {
 type ApiTransaction = { categoryId: string | null; id: string; description: string; kind: Kind; amount: number; date: string; merchant: string; note: string; deletedAt?: string };
 type ApiSettings = { currency: string; locale: string; openingBalance: number };
 type ApiCategory = { id: string; name: string; kind: Kind; parentId: string | null; icon: string; color: string };
+type ApiBudget = { id: string; categoryId: string; amount: number; period: 'weekly' | 'monthly'; spent: number };
 const fromApiTransaction = (t: ApiTransaction, categories: ApiCategory[]): Transaction => ({ id: t.id, name: t.description || t.merchant || 'Transaction', category: categories.find((c) => c.id === t.categoryId && c.kind === t.kind)?.name || '', kind: t.kind, amount: t.amount, date: t.date, merchant: t.merchant, note: t.note });
 const emptyAccount: DemoState = { transactions: [], deleted: [], budgets: [], schedules: [], categories: [], openingBalance: 0, currency: 'IDR', language: 'en', transactionEntryDefault: 'manual' };
 
@@ -384,7 +386,7 @@ export default function PocketBuddyApp() {
   }, [router]);
   const discardDialog = <DeleteDialog opened={Boolean(discardAction)} onClose={() => setDiscardAction(null)} onConfirm={() => { const action = discardAction; setDiscardAction(null); unsavedEditors.clear(); setScanFile(''); setDrafts([]); action?.(); }} title="Discard your changes?" detail="Your unsaved changes will be lost." action="Discard changes" cancelLabel="Keep editing"/>;
   useEffect(() => { window.dispatchEvent(new Event(unsavedChangeEvent)); }, [pathname]);
-  const [data, setData] = useState<DemoState>(seed);
+  const [storedData, setData] = useState<DemoState>(seed);
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState('');
   const [session, setSession] = useState<Session | null>(null);
@@ -394,6 +396,7 @@ export default function PocketBuddyApp() {
   const [sessionReady, setSessionReady] = useState(false);
   const [accountLoading, setAccountLoading] = useState(false);
   const [dataMode, setDataMode] = useState<'demo' | 'account' | null>(null);
+  const data = useMemo(() => dataMode === 'demo' ? { ...storedData, budgets: withBudgetSpending(storedData.budgets, storedData.transactions, storedData.categories, new Date()) } : storedData, [storedData, dataMode]);
   const [accountError, setAccountError] = useState('');
   const [sessionError, setSessionError] = useState('');
   const restoreSession = useCallback(async () => {
@@ -415,11 +418,13 @@ export default function PocketBuddyApp() {
         if (items.length >= result.total || result.transactions.length === 0) return items;
       }
     };
-    const [settings, active, deleted, categoryResult] = await Promise.all([apiRequest<ApiSettings>('/settings'), all('/transactions'), all('/transactions/deleted'), apiRequest<{ categories: ApiCategory[] }>('/categories')]);
+    const today = new Date();
+    const on = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const [settings, active, deleted, categoryResult, budgetResult] = await Promise.all([apiRequest<ApiSettings>('/settings'), all('/transactions'), all('/transactions/deleted'), apiRequest<{ categories: ApiCategory[] }>('/categories'), apiRequest<{ budgets: ApiBudget[] }>(`/budgets?on=${on}`)]);
     const apiCategories = categoryResult.categories ?? [];
     const categories = apiCategories.map((c) => ({ id: c.id, name: c.name, kind: c.kind, icon: c.icon, color: c.color || 'aqua', parent: apiCategories.find((p) => p.id === c.parentId && p.kind === c.kind)?.name }));
     if (settings.currency !== 'IDR') throw new Error('This account uses a currency that the financial screens do not support yet.');
-    return { ...emptyAccount, openingBalance: settings.openingBalance, currency: settings.currency, language: settings.locale === 'id-ID' ? 'id' as const : 'en' as const, categories, transactions: active.map((t) => fromApiTransaction(t, apiCategories)), deleted: deleted.map((t) => ({ ...fromApiTransaction(t, apiCategories), deletedAt: (t.deletedAt || '').slice(0, 10) })) };
+    return { ...emptyAccount, openingBalance: settings.openingBalance, currency: settings.currency, language: settings.locale === 'id-ID' ? 'id' as const : 'en' as const, categories, transactions: active.map((t) => fromApiTransaction(t, apiCategories)), deleted: deleted.map((t) => ({ ...fromApiTransaction(t, apiCategories), deletedAt: (t.deletedAt || '').slice(0, 10) })), budgets: (budgetResult.budgets ?? []).map((b) => ({ id: b.id, category: apiCategories.find((c) => c.id === b.categoryId && c.kind === 'expense')?.name || '', limit: b.amount, period: b.period === 'weekly' ? 'Weekly' as const : 'Monthly' as const, spent: b.spent })) };
   }
   async function refreshAccount(current: Session) { const account = await loadAccount(current); if (sessionRef.current?.user.id === current.user.id) setData(account); }
   useEffect(() => {
@@ -473,7 +478,7 @@ export default function PocketBuddyApp() {
   }
 
   useEffect(() => { setReady(sessionReady && !accountLoading && !accountError); }, [sessionReady, accountLoading, accountError]);
-  useEffect(() => { if (ready && sessionReady && !session && dataMode === 'demo' && data !== demoSnapshot.current) { localStorage.setItem(STORE_KEY, JSON.stringify(data)); demoSnapshot.current = data; } }, [data, ready, sessionReady, session, dataMode]);
+  useEffect(() => { if (ready && sessionReady && !session && dataMode === 'demo' && storedData !== demoSnapshot.current) { localStorage.setItem(STORE_KEY, JSON.stringify(storedData)); demoSnapshot.current = storedData; } }, [storedData, ready, sessionReady, session, dataMode]);
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 2800); return () => window.clearTimeout(timer); }, [notice]);
   useEffect(() => { if (pathname === '/transactions/scan') router.replace('/transactions/new'); }, [pathname, router]);
 
@@ -522,9 +527,33 @@ export default function PocketBuddyApp() {
     if (pathname === `/transactions/${tx.id}`) router.push('/transactions');
   }
   const removeCategory = async (id: string) => { if (session) { try { await apiRequest(`/categories/${id}`, {}, session.csrfToken, 'DELETE'); try { await refreshAccount(session); } catch { setAccountError('Your category was deleted, but your account could not be refreshed. Reload to continue.'); return; } setNotice('Category removed'); if (pathname === `/categories/${id}`) router.push('/categories'); } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not delete category'); } return; } setData((old) => { const deleted = old.categories.find((c) => c.id === id); if (!deleted || (deleted.kind === 'expense' && old.budgets.some((b) => b.category === deleted.name))) return old; return { ...old, categories: old.categories.filter((c) => c.id !== id).map((c) => c.kind === deleted.kind && c.parent === deleted.name ? { ...c, parent: undefined } : c), transactions: old.transactions.map((t) => t.kind === deleted.kind && t.category === deleted.name ? { ...t, category: '' } : t), deleted: old.deleted.map((t) => t.kind === deleted.kind && t.category === deleted.name ? { ...t, category: '' } : t), schedules: old.schedules.map((t) => t.kind === deleted.kind && t.category === deleted.name ? { ...t, category: '' } : t) }; }); setNotice('Category removed'); };
-  function addBudget(budget: Omit<Budget, 'id' | 'spent'>) {
+  async function addBudget(budget: Omit<Budget, 'id' | 'spent'>) {
+    if (session) {
+      const category = data.categories.find((c) => c.kind === 'expense' && c.name === budget.category);
+      if (!category) throw new Error('Choose an available expense category.');
+      await apiRequest('/budgets', { categoryId: category.id, amount: budget.limit, period: budget.period.toLowerCase() }, session.csrfToken);
+      try { await refreshAccount(session); } catch { setAccountError('Your budget was saved, but your account could not be refreshed. Reload to continue.'); return; }
+      setNotice('Budget created'); router.push('/budgets'); return;
+    }
     setData((old) => ({ ...old, budgets: [...old.budgets, { ...budget, id: `b${Date.now()}`, spent: 0 }] }));
     setNotice('Budget created'); router.push('/budgets');
+  }
+  async function updateBudget(budget: Budget, updates: Omit<Budget, 'id' | 'spent'>) {
+    if (session) {
+      const category = data.categories.find((c) => c.kind === 'expense' && c.name === updates.category);
+      if (!category) throw new Error('This budget category is no longer available.');
+      await apiRequest(`/budgets/${budget.id}`, { categoryId: category.id, amount: updates.limit, period: updates.period.toLowerCase() }, session.csrfToken, 'PUT');
+      try { await refreshAccount(session); } catch { setAccountError('Your budget was saved, but your account could not be refreshed. Reload to continue.'); return; }
+    } else setData((old) => ({ ...old, budgets: old.budgets.map((b) => b.id === budget.id ? { ...b, ...updates } : b) }));
+    setNotice('Budget saved');
+  }
+  async function removeBudget(id: string) {
+    if (session) {
+      await apiRequest(`/budgets/${id}`, {}, session.csrfToken, 'DELETE');
+      try { await refreshAccount(session); } catch { setAccountError('Your budget was removed, but your account could not be refreshed. Reload to continue.'); return; }
+    } else setData((old) => ({ ...old, budgets: old.budgets.filter((b) => b.id !== id) }));
+    setNotice('Budget removed');
+    if (pathname === `/budgets/${id}`) router.push('/budgets');
   }
   function addSchedule(schedule: Omit<Schedule, 'id'>) {
     setData((old) => ({ ...old, schedules: [...old.schedules, { ...schedule, id: `r${Date.now()}` }] }));
@@ -578,7 +607,7 @@ export default function PocketBuddyApp() {
   if (sessionError) return <div className="auth-screen"><Card><p role="alert">{sessionError}</p><Button onClick={() => void restoreSession()}>Retry</Button></Card></div>;
   if (!sessionReady || (session && (accountLoading || (!accountError && dataMode !== 'account'))) || (!session && dataMode !== 'demo')) return <div className="auth-screen">Loading your account…</div>;
   if (session && accountError) return <div className="auth-screen"><Card><p role="alert">{accountError}</p><Button onClick={signOut}>Sign out</Button>{notice && <p role="alert">{notice}</p>}</Card></div>;
-  const unavailable = session && ['/budgets', '/recurring'].some((path) => pathname === path || pathname.startsWith(path + '/'));
+  const unavailable = session && (pathname === '/recurring' || pathname.startsWith('/recurring/'));
   if (unavailable) return <div className="auth-screen"><Card><Empty title="Coming soon" detail="This feature is not yet connected to your account." action={<Button href="/">Back to overview</Button>}/></Card></div>;
   const navItem = nav.find((item) => item.href === pathname || (item.href !== '/' && pathname.startsWith(item.href)));
   return <div className="app-frame">{discardDialog}
@@ -596,9 +625,9 @@ export default function PocketBuddyApp() {
         {pathname === '/transactions/new' && ready && <TransactionEntryPage defaultMode={session ? 'manual' : (data.transactionEntryDefault ?? 'scan')} categories={data.categories} currency={data.currency} onSave={addTransaction} onCommit={addTransactions} fileName={scanFile} setFileName={setScanFile} drafts={drafts} setDrafts={setDrafts} onDone={() => { setDrafts([]); setScanFile(''); }} />}
         {parts[0] === 'transactions' && parts[1] && !parts[2] && parts[1] !== 'new' && parts[1] !== 'scan' && parts[1] !== 'recently-deleted' && (ready && (data.transactions.some((tx) => tx.id === parts[1]) ? <TransactionForm key={parts[1]} categories={data.categories} onSave={addTransaction} original={data.transactions.find((tx) => tx.id === parts[1])} onDelete={removeTransaction}/> : <Card><Empty title="Transaction not found" detail="It may have been deleted or the link may be out of date." action={<Button onClick={() => goBack('/transactions')}>Back</Button>}/></Card>))}
         {pathname === '/transactions/recently-deleted' && <RecentlyDeleted categories={data.categories} goBack={goBack} items={data.deleted} currency={data.currency} restore={async (id) => { if (session) { try { await apiRequest(`/transactions/${id}/restore`, {}, session.csrfToken); await refreshAccount(session); setNotice('Transaction restored'); } catch { setNotice('Could not restore transaction'); } return; } const item = data.deleted.find((tx) => tx.id === id); if (item) { const { deletedAt: _deletedAt, ...tx } = item; setData((old) => ({ ...old, deleted: old.deleted.filter((entry) => entry.id !== id), transactions: [tx, ...old.transactions] })); setNotice('Transaction restored'); } }}/ >}
-        {pathname === '/budgets' && <BudgetsPage categories={data.categories} budgets={data.budgets} currency={data.currency} onDelete={(id) => { setData((old) => ({ ...old, budgets: old.budgets.filter((b) => b.id !== id) })); setNotice('Budget removed'); }}/ >}
-        {pathname === '/budgets/new' && <BudgetForm categories={data.categories.filter((c) => c.kind === 'expense')} onSave={addBudget}/>}
-        {parts[0] === 'budgets' && parts[1] && parts[1] !== 'new' && <BudgetDetails goBack={goBack} budget={data.budgets.find((b) => b.id === parts[1])} currency={data.currency} onSave={(limit) => { setData((old) => ({ ...old, budgets: old.budgets.map((b) => b.id === parts[1] ? { ...b, limit } : b) })); setNotice('Budget limit saved'); }} onDelete={() => { setData((old) => ({ ...old, budgets: old.budgets.filter((b) => b.id !== parts[1]) })); router.push('/budgets'); setNotice('Budget removed'); }}/ >}
+        {pathname === '/budgets' && <BudgetsPage categories={data.categories} budgets={data.budgets} currency={data.currency} onDelete={removeBudget}/ >}
+        {pathname === '/budgets/new' && <BudgetForm categories={data.categories.filter((c) => c.kind === 'expense')} budgets={data.budgets} onSave={addBudget}/>}
+        {parts[0] === 'budgets' && parts[1] && parts[1] !== 'new' && <BudgetDetails goBack={goBack} budget={data.budgets.find((b) => b.id === parts[1])} budgets={data.budgets} categories={data.categories.filter((c) => c.kind === 'expense')} currency={data.currency} onSave={(updates) => { const budget = data.budgets.find((b) => b.id === parts[1]); if (budget) return updateBudget(budget, updates); return Promise.reject(new Error('Budget not found.')); }} onDelete={() => removeBudget(parts[1])}/ >}
         {pathname === '/recurring' && <RecurringPage categories={data.categories} schedules={data.schedules} currency={data.currency} onDelete={(id) => { setData((old) => ({ ...old, schedules: old.schedules.filter((s) => s.id !== id) })); setNotice('Schedule deleted'); }} onToggle={(id) => setData((old) => ({ ...old, schedules: old.schedules.map((s) => s.id === id ? { ...s, paused: !s.paused } : s) }))} onSkip={skipOccurrence} onConfirm={confirmOccurrence}/ >}
         {pathname === '/recurring/review' && <RecurringReviewPage schedules={data.schedules} currency={data.currency} onSkip={skipOccurrence} onConfirm={confirmOccurrence}/>}
         {pathname === '/recurring/new' && <ScheduleForm categories={data.categories} onSave={addSchedule}/>}
@@ -915,26 +944,51 @@ function DraftReviewItem({ draft, index, categories, currency, isValid, isStaged
   return <article className="draft-review-item"><div className="draft-review-heading"><strong>Draft {index + 1}</strong><span className={`confidence-pill ${draft.category ? '' : 'needs-review'}`}><Sparkles size={12}/>{draft.category ? 'Looks clear' : 'Check category'}</span></div><div className="draft-review-amount"><Field label="Amount" required><AmountInput value={String(draft.amount || '')} onChange={(value) => onChange({ amount: Number(value) })}/></Field></div><div className="draft-review-fields"><Field label="Description" required><input required value={draft.name} onChange={(event) => onChange({ name: event.target.value })}/></Field><Field label="Category" required><SelectInput required value={draft.category} onChange={(value) => onChange({ category: value })} ariaLabel={`Draft ${index + 1} category`} options={[{ value: '', label: 'Choose a category' }, ...categories.map((category) => ({ value: category.name, label: category.name }))]} /></Field><Field label="Date" required labelControl={false}><DatePicker ariaLabel={`Draft ${index + 1} date`} required value={draft.date} onChange={(date) => onChange({ date })}/></Field><Field label="Merchant"><input value={draft.merchant ?? ''} onChange={(event) => onChange({ merchant: event.target.value })} placeholder="Add a merchant"/></Field></div><div className="draft-review-actions"><Button variant="quiet" onClick={onSkip}>Skip draft</Button><Button variant="primary" disabled={!isValid} onClick={onToggleStage}><Check size={15}/>Looks good</Button></div></article>;
 }
 
-function BudgetsPage({ budgets, categories, currency, onDelete }: { budgets: Budget[]; categories: Category[]; currency: string; onDelete: (id: string) => void }) {
+function BudgetsPage({ budgets, categories, currency, onDelete }: { budgets: Budget[]; categories: Category[]; currency: string; onDelete: (id: string) => Promise<void> }) {
   const [deleting, setDeleting] = useState<Budget | null>(null);
-  const spent = budgets.reduce((sum, b) => sum + b.spent, 0), limit = budgets.reduce((sum, b) => sum + b.limit, 0);
-  return <><div className="summary-strip"><div><span>Planned limits</span><strong>{fmt(limit, currency)}</strong></div><div><span>Spent so far</span><strong>{fmt(spent, currency)}</strong></div><div><span>Still available</span><strong className="income-text">{fmt(Math.max(0, limit - spent), currency)}</strong></div></div><Card className="ledger-card">{budgets.length ? <ListDisplay sorts={budgetSorts} items={budgets} label="budgets" searchText={(b) => b.category} filters={[{ label: "All periods", options: ["Weekly", "Monthly"].map((value) => ({ value, label: value })), matches: (b, value) => b.period === value }, { label: "All spending", options: [{ value: "over", label: "Over budget" }, { value: "within", label: "Within budget" }], matches: (b, value) => value === "over" ? b.spent > b.limit : b.spent <= b.limit }]}>{(rows) => <div className="budget-manage-list">{rows.map((b) => <div className="budget-manage-row" key={b.id}><BudgetRows categories={categories} budgets={[b]} currency={currency} showMobileChevron/><button className="icon-button budget-delete" aria-label={`Delete ${b.category} budget`} onClick={() => setDeleting(b)}><Trash2 size={15}/></button></div>)}</div>}</ListDisplay> : <Empty title="No budgets yet" detail="Start with a category you’d like to keep an eye on." action={<Button href="/budgets/new" variant="primary">Create a budget</Button>}/>}</Card><DeleteDialog opened={!!deleting} onClose={() => setDeleting(null)} onConfirm={() => { if (deleting) onDelete(deleting.id); }} title="Remove budget?" detail={`Remove the ${deleting?.category ?? 'selected'} budget? Transactions will remain. This cannot be undone.`} action="Remove budget"/></>;
+  const [error, setError] = useState('');
+  return <><div className="summary-strip"><div><span>Active budgets</span><strong>{budgets.length}</strong></div><div><span>Over budget</span><strong>{budgets.filter((b) => b.spent > b.limit).length}</strong></div><div><span>Within budget</span><strong className="income-text">{budgets.filter((b) => b.spent <= b.limit).length}</strong></div></div><Card className="ledger-card">{budgets.length ? <ListDisplay sorts={budgetSorts} items={budgets} label="budgets" searchText={(b) => b.category} filters={[{ label: "All periods", options: ["Weekly", "Monthly"].map((value) => ({ value, label: value })), matches: (b, value) => b.period === value }, { label: "All spending", options: [{ value: "over", label: "Over budget" }, { value: "within", label: "Within budget" }], matches: (b, value) => value === "over" ? b.spent > b.limit : b.spent <= b.limit }]}>{(rows) => <div className="budget-manage-list">{rows.map((b) => <div className="budget-manage-row" key={b.id}><BudgetRows categories={categories} budgets={[b]} currency={currency} showMobileChevron/><button className="icon-button budget-delete" aria-label={`Delete ${b.category} budget`} onClick={() => { setError(''); setDeleting(b); }}><Trash2 size={15}/></button></div>)}</div>}</ListDisplay> : <Empty title="No budgets yet" detail="Start with a category you’d like to keep an eye on." action={<Button href="/budgets/new" variant="primary">Create a budget</Button>}/>}</Card><DeleteDialog opened={!!deleting} onClose={() => setDeleting(null)} onConfirm={() => { if (deleting) void onDelete(deleting.id).catch((error) => setError(error instanceof Error ? error.message : 'Could not remove budget')); }} title="Remove budget?" detail={`Remove the ${deleting?.category ?? 'selected'} budget? Transactions will remain. This cannot be undone.`} action="Remove budget"/>{error && <p className="form-error" role="alert">{error}</p>}</>;
 }
 
-function BudgetForm({ categories, onSave }: { categories: Category[]; onSave: (b: Omit<Budget, 'id' | 'spent'>) => void }) {
-  const [category, setCategory] = useState(''); const [period, setPeriod] = useState<'Weekly' | 'Monthly'>('Monthly'); const [limit, setLimit] = useState(''); const [error, setError] = useState('');
+function BudgetForm({ categories, budgets, onSave }: { categories: Category[]; budgets: Budget[]; onSave: (b: Omit<Budget, 'id' | 'spent'>) => Promise<void> }) {
+  const [category, setCategory] = useState(''); const [period, setPeriod] = useState<'Weekly' | 'Monthly'>('Monthly'); const [limit, setLimit] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   useUnsavedChanges(Boolean(category || limit || period !== 'Monthly'));
-  function submit(e: FormEvent) { e.preventDefault(); const value = Number(limit); if (!Number.isSafeInteger(value) || value <= 0) { setError('Enter a spending limit greater than zero.'); return; } if (!categories.some((item) => item.name === category)) { setError('Choose an available category.'); return; } onSave({ category, period, limit: value }); }
-  return <form className="form-layout budget-form" onSubmit={submit}><Card className="form-card"><div className="form-intro"><span className="form-icon violet-icon"><BarChart3 size={18}/></span><div><h2>Make a little room</h2><p>Budgets are a guide, not a grade.</p></div></div><Field label="Spending limit" required><AmountInput value={limit} onChange={setLimit} ariaLabel="Spending limit"/></Field><div className="form-grid"><Field label="Category" required><SelectInput required value={category} onChange={setCategory} ariaLabel="Category" options={categories.map((c) => ({ value: c.name, label: `${c.name}${c.parent ? ` · under ${c.parent}` : ''}` }))} /></Field><Field label="Budget period" required><SelectInput required value={period} onChange={(value) => setPeriod(value as 'Weekly' | 'Monthly')} ariaLabel="Budget period" options={[{ value: 'Weekly', label: 'Weekly' }, { value: 'Monthly', label: 'Monthly' }]} /></Field></div>{error && <p className="form-error" role="alert">{error}</p>}<div className="form-actions"><Button href="/budgets">Cancel</Button><Button type="submit" variant="primary" disabled={!Number.isSafeInteger(Number(limit)) || Number(limit) <= 0 || !categories.some((item) => item.name === category) || !period}><Check size={16}/>Create budget</Button></div></Card></form>;
+  const duplicate = budgets.some((b) => b.category === category && b.period === period);
+  async function submit(e: FormEvent) { e.preventDefault(); if (busy) return; const value = Number(limit); if (!Number.isSafeInteger(value) || value <= 0) { setError('Enter a spending limit greater than zero.'); return; } if (!categories.some((item) => item.name === category)) { setError('Choose an available category.'); return; } if (duplicate) { setError('A budget already exists for this category and period.'); return; } setBusy(true); setError(''); try { await onSave({ category, period, limit: value }); } catch (error) { setError(error instanceof Error ? error.message : 'Could not create budget.'); } finally { setBusy(false); } }
+  return <form className="form-layout budget-form" onSubmit={(event) => { void submit(event); }}><Card className="form-card"><div className="form-intro"><span className="form-icon violet-icon"><BarChart3 size={18}/></span><div><h2>Make a little room</h2><p>Budgets are a guide, not a grade.</p></div></div><Field label="Spending limit" required><AmountInput value={limit} onChange={setLimit} ariaLabel="Spending limit"/></Field><div className="form-grid"><Field label="Category" required><SelectInput required value={category} onChange={setCategory} ariaLabel="Category" options={categories.map((c) => ({ value: c.name, label: `${c.name}${c.parent ? ` · under ${c.parent}` : ''}` }))} /></Field><Field label="Budget period" required><SelectInput required value={period} onChange={(value) => setPeriod(value as 'Weekly' | 'Monthly')} ariaLabel="Budget period" options={[{ value: 'Weekly', label: 'Weekly' }, { value: 'Monthly', label: 'Monthly' }]} /></Field></div>{duplicate && <p className="form-error" role="alert">A budget already exists for this category and period.</p>}{error && <p className="form-error" role="alert">{error}</p>}<div className="form-actions"><Button href="/budgets">Cancel</Button><Button type="submit" variant="primary" disabled={busy || duplicate || !Number.isSafeInteger(Number(limit)) || Number(limit) <= 0 || !categories.some((item) => item.name === category) || !period}><Check size={16}/>{busy ? 'Creating…' : 'Create budget'}</Button></div></Card></form>;
 }
 
-function BudgetDetails({ budget, currency, onSave, onDelete, goBack }: { goBack: (fallback: string) => void; budget?: Budget; currency: string; onSave: (limit: number) => void; onDelete: () => void }) {
-  const [limit, setLimit] = useState(budget ? String(budget.limit) : ''); const [confirmDelete, setConfirmDelete] = useState(false);
-  useEffect(() => { setLimit(budget ? String(budget.limit) : ''); }, [budget]);
-  useUnsavedChanges(Boolean(budget && limit !== String(budget.limit)));
+function BudgetDetails({ budget, budgets, categories, currency, onSave, onDelete, goBack }: { goBack: (fallback: string) => void; budget?: Budget; budgets: Budget[]; categories: Category[]; currency: string; onSave: (updates: Omit<Budget, 'id' | 'spent'>) => Promise<void>; onDelete: () => Promise<void> }) {
+  const [limit, setLimit] = useState(budget ? String(budget.limit) : '');
+  const [category, setCategory] = useState(budget?.category || '');
+  const [period, setPeriod] = useState<'Weekly' | 'Monthly'>(budget?.period || 'Monthly');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => { setLimit(budget ? String(budget.limit) : ''); setCategory(budget?.category || ''); setPeriod(budget?.period || 'Monthly'); }, [budget]);
+  const changed = Boolean(budget && (limit !== String(budget.limit) || category !== budget.category || period !== budget.period));
+  useUnsavedChanges(changed);
   if (!budget) return <Card><Empty title="Budget not found" detail="This budget may have been removed." action={<Button onClick={() => goBack('/budgets')}>Back</Button>}/></Card>;
   const pct = Math.min(100, Math.round(budget.spent / budget.limit * 100));
-  return <><div className="detail-layout detail-full-width"><Card className="detail-card budget-detail"><span className="section-kicker">{budget.period.toUpperCase()} CATEGORY BUDGET</span><h2>{budget.category}</h2><div className="budget-big-progress"><i><em style={{ width: `${pct}%` }}/></i><small>{fmt(Math.max(0, budget.limit - budget.spent), currency)} left of {fmt(budget.limit, currency)}</small><strong>{pct}%</strong></div><form onSubmit={(e) => { e.preventDefault(); const value = Number(limit); if (Number.isSafeInteger(value) && value > 0) onSave(value); }}><Field label="Update spending limit" required><AmountInput value={limit} onChange={setLimit} ariaLabel="Update spending limit"/></Field><div className="form-actions"><Button onClick={() => setConfirmDelete(true)} variant="danger"><Trash2 size={15}/>Remove</Button><Button type="submit" variant="primary" disabled={!Number.isSafeInteger(Number(limit)) || Number(limit) <= 0}><Check size={15}/>Save limit</Button></div></form></Card></div><DeleteDialog opened={confirmDelete} onClose={() => setConfirmDelete(false)} onConfirm={onDelete} title="Remove budget?" detail="This budget will be removed. Transactions will remain. This cannot be undone." action="Remove budget"/></>;
+  const duplicate = budgets.some((b) => b.id !== budget.id && b.category === category && b.period === period);
+  const valid = Number.isSafeInteger(Number(limit)) && Number(limit) > 0 && categories.some((c) => c.name === category) && !duplicate;
+  const canSave = changed && valid;
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!canSave || busy) return;
+    setBusy(true); setError('');
+    void onSave({ category, period, limit: Number(limit) }).catch((failure) => setError(failure instanceof Error ? failure.message : 'Could not save budget.')).finally(() => setBusy(false));
+  }
+  return <><div className="detail-layout detail-full-width"><Card className="detail-card budget-detail">
+    <span className="section-kicker">{budget.period.toUpperCase()} CATEGORY BUDGET</span><h2>{budget.category}</h2>
+    <div className="budget-big-progress"><i><em style={{ width: `${pct}%` }}/></i><small>{fmt(Math.max(0, budget.limit - budget.spent), currency)} left of {fmt(budget.limit, currency)}</small><strong>{pct}%</strong></div>
+    <form onSubmit={submit}>
+      <Field label="Spending limit" required><AmountInput value={limit} onChange={setLimit} ariaLabel="Spending limit"/></Field>
+      <div className="form-grid"><Field label="Category" required><SelectInput required value={category} onChange={setCategory} ariaLabel="Category" options={categories.map((c) => ({ value: c.name, label: `${c.name}${c.parent ? ` · under ${c.parent}` : ''}` }))}/></Field><Field label="Budget period" required><SelectInput required value={period} onChange={(value) => setPeriod(value as 'Weekly' | 'Monthly')} ariaLabel="Budget period" options={[{ value: 'Weekly', label: 'Weekly' }, { value: 'Monthly', label: 'Monthly' }]}/></Field></div>
+      {duplicate && <p className="form-error" role="alert">A budget already exists for this category and period.</p>}{error && <p className="form-error" role="alert">{error}</p>}
+      <div className="form-actions"><Button onClick={() => setConfirmDelete(true)} variant="danger" disabled={busy}><Trash2 size={15}/>Remove</Button><Button type="submit" variant="primary" disabled={busy || !canSave}><Check size={15}/>{busy ? 'Saving…' : 'Save budget'}</Button></div>
+    </form>
+  </Card></div><DeleteDialog opened={confirmDelete} onClose={() => setConfirmDelete(false)} onConfirm={() => { void onDelete().catch((failure) => setError(failure instanceof Error ? failure.message : 'Could not remove budget.')); }} title="Remove budget?" detail="This budget will be removed. Transactions will remain. This cannot be undone." action="Remove budget"/></>;
 }
 
 function pendingSchedules(schedules: Schedule[]) {
@@ -1043,7 +1097,7 @@ function SettingsPage({ data, save, account }: { data: DemoState; account: boole
 function AccountSettings({ session, onSignOut, onDelete }: { session: Session | null; onSignOut: () => void; onDelete: (password: string) => Promise<void> }) {
   const [confirm, setConfirm] = useState(false); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   async function deleteAccount(e: FormEvent) { e.preventDefault(); setBusy(true); setError(''); try { await onDelete(password); setPassword(''); setConfirm(false); } catch (err) { setError(err instanceof Error ? err.message : 'Could not delete account'); } finally { setBusy(false); } }
-  return <div className="account-layout"><Card className="account-profile"><span className="large-avatar">{session ? session.user.email[0].toUpperCase() : 'D'}</span><div><h2>{session ? 'Signed in' : 'Demo account'}</h2><p>{session ? session.user.email : 'Browser-local preview'}</p></div></Card><Card className="account-settings"><div className="card-heading"><div><span className="section-kicker">SIGN-IN &amp; SAFETY</span><h2>Account security</h2></div><ShieldCheck size={18}/></div><p className="settings-description">{session ? 'Your transactions, categories and money settings are saved to your account. Budgets and recurring transactions are coming soon.' : 'Sign in to manage your account.'}</p><Link href="/forgot-password" className="security-row"><span><strong>Password</strong><small>Reset your password</small></span><ArrowRight size={16}/></Link><div className="account-buttons"><Button onClick={onSignOut}><LogOut size={15}/>{session ? 'Sign out' : 'Sign in'}</Button>{session && <Button onClick={() => setConfirm(true)} variant="danger"><Trash2 size={15}/>Delete account</Button>}</div></Card><Modal.Root opened={confirm} onClose={() => { if (!busy) { setConfirm(false); setPassword(''); setError(''); } }} unstyled><Modal.Overlay className="radix-dialog-overlay"/><Modal.Content classNames={{ content: "commit-review-dialog" }} transitionProps={{ transition: "fade" }}><div className="commit-review-heading"><Modal.Title className="dialog-title">Delete account</Modal.Title><button type="button" className="icon-button" aria-label="Close confirmation" disabled={busy} onClick={() => setConfirm(false)}><X size={18}/></button></div><form onSubmit={deleteAccount}><p>Access ends immediately. Your account and its saved data will be permanently erased after 30 days.</p><Field label="Password" required><input required type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)}/></Field>{error && <p className="form-error" role="alert">{error}</p>}<div className="form-actions"><Button onClick={() => setConfirm(false)} disabled={busy}>Cancel</Button><Button type="submit" variant="danger" disabled={!password || busy}>{busy ? 'Deleting…' : 'Delete account'}</Button></div></form></Modal.Content></Modal.Root></div>;
+  return <div className="account-layout"><Card className="account-profile"><span className="large-avatar">{session ? session.user.email[0].toUpperCase() : 'D'}</span><div><h2>{session ? 'Signed in' : 'Demo account'}</h2><p>{session ? session.user.email : 'Browser-local preview'}</p></div></Card><Card className="account-settings"><div className="card-heading"><div><span className="section-kicker">SIGN-IN &amp; SAFETY</span><h2>Account security</h2></div><ShieldCheck size={18}/></div><p className="settings-description">{session ? 'Your transactions, categories, budgets and money settings are saved to your account. Recurring transactions are coming soon.' : 'Sign in to manage your account.'}</p><Link href="/forgot-password" className="security-row"><span><strong>Password</strong><small>Reset your password</small></span><ArrowRight size={16}/></Link><div className="account-buttons"><Button onClick={onSignOut}><LogOut size={15}/>{session ? 'Sign out' : 'Sign in'}</Button>{session && <Button onClick={() => setConfirm(true)} variant="danger"><Trash2 size={15}/>Delete account</Button>}</div></Card><Modal.Root opened={confirm} onClose={() => { if (!busy) { setConfirm(false); setPassword(''); setError(''); } }} unstyled><Modal.Overlay className="radix-dialog-overlay"/><Modal.Content classNames={{ content: "commit-review-dialog" }} transitionProps={{ transition: "fade" }}><div className="commit-review-heading"><Modal.Title className="dialog-title">Delete account</Modal.Title><button type="button" className="icon-button" aria-label="Close confirmation" disabled={busy} onClick={() => setConfirm(false)}><X size={18}/></button></div><form onSubmit={deleteAccount}><p>Access ends immediately. Your account and its saved data will be permanently erased after 30 days.</p><Field label="Password" required><input required type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)}/></Field>{error && <p className="form-error" role="alert">{error}</p>}<div className="form-actions"><Button onClick={() => setConfirm(false)} disabled={busy}>Cancel</Button><Button type="submit" variant="danger" disabled={!password || busy}>{busy ? 'Deleting…' : 'Delete account'}</Button></div></form></Modal.Content></Modal.Root></div>;
 }
 
 function AuthContent({ path, go, goBack, notify, setSession }: { path: string; go: (path: string) => void; goBack: (fallback: string) => void; notify: (s: string) => void; setSession: (session: Session | null) => void }) {

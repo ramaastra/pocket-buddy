@@ -70,6 +70,7 @@ func registerAuthRoutes(r *gin.Engine, db *gorm.DB, origin string, secureCookies
 
 	registerTransactionRoutes(auth, db, origin)
 	registerCategoryRoutes(auth, db, origin)
+	registerBudgetRoutes(auth, db, origin)
 }
 
 // Pending accounts cannot authenticate; their password is chosen only after email verification.
