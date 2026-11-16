@@ -7,6 +7,7 @@
 - API: Go with Gin, JSON REST (`services/api`). Business rules and authentication belong here.
 - Database: PostgreSQL. GORM handles routine persistence; schema changes use explicit versioned SQL migrations via `golang-migrate`.
 - Local orchestration: Docker Compose.
+- Local email testing: Mailpit captures verification and password-reset emails without delivering them externally. A production email provider remains to be configured.
 - AI extraction: Gemini API called server-side from Go. Keep provider-specific request/response handling behind an interface.
 
 ## Service boundaries

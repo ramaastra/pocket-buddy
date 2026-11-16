@@ -21,3 +21,16 @@ This file is the shared entry point for coding agents. Keep project knowledge in
 - Do not claim a feature is complete unless it is implemented; update the implementation status in the relevant docs when it materially changes.
 - Prefer small changes that preserve existing user data and provide a reversible path for data migrations.
 - For every UI change, follow [`docs/design-direction.md`](docs/design-direction.md) for visuals, typography, copy, and motion.
+
+
+## Agent efficiency
+
+- Read only documentation relevant to the current task.
+- Search for relevant files and symbols before opening entire files.
+- Prefer targeted investigation over repository-wide exploration.
+- For UI changes, identify the route, component, relevant states, and conditional rendering branches.
+- Check whether the behavior differs between signed-in users and the unsigned demo.
+- Do not assume the default visible UI is the only implementation.
+- Run targeted tests and checks before broader suites.
+- If the requested implementation cannot be located, report findings and blockers instead of guessing.
+- Keep responses concise; avoid repeating documentation.

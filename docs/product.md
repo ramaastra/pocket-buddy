@@ -24,8 +24,8 @@ Pocket Buddy helps an individual understand and manage everyday income and expen
 - When currency changes become available, changing currency relabels existing amounts without conversion; warn the user clearly before applying the change.
 - New accounts start empty. Do not automatically import or erase browser-local demo data; provide sample data in a separate demo account.
 - Weekly budgets start on Monday.
-- A monthly recurring schedule anchored to a day missing in a month occurs on that month's last day, then returns to its original day when available.
-- User-facing deletion is soft deletion. Deleted transactions can be restored for 30 days, then are permanently erased. Deleted accounts and their associated data are permanently erased after 30 days. Retention and restoration of other deleted records remains to be decided.
+- A monthly recurring schedule anchored to a day missing in a month occurs on that month's last day, then returns to its original day when available (for example, January 31, February 28, March 31).
+- User-facing deletion is soft deletion. Deleted transactions can be restored for 30 days, then are permanently erased. Deleting an account soft-deletes it and its associated data; permanently erase the account and associated data after 30 days. The retention and restoration behavior of other deleted record types remains to be decided.
 - Language and currency settings are independent. The demo can save an English or Indonesian language preference; its interface remains in English until translations are implemented.
 - Available cash is opening balance plus income minus expenses, including uncategorized transactions.
 - Budgets are planning limits and do not themselves change cash balance.
