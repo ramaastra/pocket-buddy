@@ -20,7 +20,12 @@ Pocket Buddy helps an individual understand and manage everyday income and expen
 
 ## Product decisions
 
-- Single currency per user, initially IDR; users may change the display currency later. Existing amounts are not converted automatically. A deliberate conversion workflow is future work.
+- Single currency per user, currently IDR. Other currencies need fractional amount support and a deliberate conversion workflow.
+- When currency changes become available, changing currency relabels existing amounts without conversion; warn the user clearly before applying the change.
+- New accounts start empty. Do not automatically import or erase browser-local demo data; provide sample data in a separate demo account.
+- Weekly budgets start on Monday.
+- A monthly recurring schedule anchored to a day missing in a month occurs on that month's last day, then returns to its original day when available.
+- User-facing deletion is soft deletion. Deleted transactions can be restored for 30 days, then are permanently erased. Deleted accounts and their associated data are permanently erased after 30 days. Retention and restoration of other deleted records remains to be decided.
 - Language and currency settings are independent. The demo can save an English or Indonesian language preference; its interface remains in English until translations are implemented.
 - Available cash is opening balance plus income minus expenses, including uncategorized transactions.
 - Budgets are planning limits and do not themselves change cash balance.
@@ -30,4 +35,4 @@ Pocket Buddy helps an individual understand and manage everyday income and expen
 
 ## Current delivery status
 
-The web client now contains the MVP route set as an interactive responsive demo with a locked Color split Bifold wallet mark: a narrow full-height light-purple strip at the far left and a circular clasp, set directly beside the wordmark without a tile background. It uses English, IDR sample data, and browser local storage; it does not call the API. Transaction editing/deletion and restore, category and budget management, recurring review, receipt draft review, CSV export, and settings have front-end demo interactions. Authentication and receipt extraction are simulated. UI work should continue to follow [docs/design-direction.md](design-direction.md). The API has a versioned migration runner and initial registration/login/logout with user-scoped transaction list/create routes. Production email verification/reset, account deletion, deployment-grade rate limiting, durable financial data, Gemini extraction, and seeded demo-account support remain outstanding. The initial scaffold is not production-ready.
+Signed-in accounts load categories, transactions, recently deleted records, opening balance, currency and language from the API. Manual transaction create, edit, delete and restore, dashboard calculations, and filtered CSV export use those loaded records. New accounts start empty; the browser-local demo remains separate. Account screens currently support IDR only; fractional-currency entry and display need implementation before other currencies can be used safely. Budgets, recurring schedules, screenshot extraction and seeded demo accounts remain unfinished. The integration is local and is not production-ready.

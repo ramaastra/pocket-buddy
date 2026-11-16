@@ -5,9 +5,9 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/argon2"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -33,12 +34,13 @@ type authSession struct {
 }
 
 type authUser struct {
-	ID           string `gorm:"type:uuid;primaryKey"`
-	Email        string `gorm:"not null"`
-	PasswordHash string `gorm:"column:password_hash;not null"`
-	Currency     string `gorm:"not null"`
-	Locale       string `gorm:"not null"`
-	Opening      int64  `gorm:"column:opening_balance;not null"`
+	ID              string     `gorm:"type:uuid;primaryKey"`
+	Email           string     `gorm:"not null"`
+	EmailVerifiedAt *time.Time `gorm:"column:email_verified_at"`
+	PasswordHash    string     `gorm:"column:password_hash;not null"`
+	Currency        string     `gorm:"not null"`
+	Locale          string     `gorm:"not null"`
+	Opening         int64      `gorm:"column:opening_balance;not null"`
 }
 
 type authContext struct {
@@ -48,8 +50,14 @@ type authContext struct {
 }
 
 func registerAuthRoutes(r *gin.Engine, db *gorm.DB, origin string, secureCookies bool) {
-	r.POST("/api/auth/register", requireOrigin(origin), authRateLimit(), registerAccount(db, secureCookies))
-	r.POST("/api/auth/login", requireOrigin(origin), authRateLimit(), login(db, secureCookies))
+	r.POST("/api/auth/register", requireOrigin(origin), authRateLimit(), registerAccount(db, origin))
+	r.POST("/api/auth/login", requireOrigin(origin), authRateLimit(), login(db, secureCookies, origin))
+	r.POST("/api/auth/verification/request", requireOrigin(origin), authRateLimit(), requestAuthToken(db, "verify", origin))
+	r.POST("/api/auth/verification/check", requireOrigin(origin), authLinkRateLimit(), checkAuthToken(db, "verify"))
+	r.POST("/api/auth/verification/confirm", requireOrigin(origin), authRateLimit(), confirmAuthToken(db, "verify"))
+	r.POST("/api/auth/password-reset/request", requireOrigin(origin), authRateLimit(), requestAuthToken(db, "reset", origin))
+	r.POST("/api/auth/password-reset/check", requireOrigin(origin), authLinkRateLimit(), checkAuthToken(db, "reset"))
+	r.POST("/api/auth/password-reset/confirm", requireOrigin(origin), authRateLimit(), confirmAuthToken(db, "reset"))
 
 	auth := r.Group("/api")
 	auth.Use(loadSession(db))
@@ -58,158 +66,80 @@ func registerAuthRoutes(r *gin.Engine, db *gorm.DB, origin string, secureCookies
 		c.JSON(http.StatusOK, gin.H{"user": gin.H{"id": identity.UserID, "email": identity.Email}, "csrfToken": identity.CSRF})
 	})
 	auth.POST("/auth/logout", requireOrigin(origin), requireCSRF(), logout(db, secureCookies))
+	auth.DELETE("/auth/account", requireOrigin(origin), requireCSRF(), deleteAccount(db, secureCookies))
 
-	transactions := auth.Group("/transactions")
-	transactions.GET("", listTransactions(db))
-	transactions.POST("", requireOrigin(origin), requireCSRF(), createTransaction(db))
+	registerTransactionRoutes(auth, db, origin)
+	registerCategoryRoutes(auth, db, origin)
 }
 
-func listTransactions(db *gorm.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		identity := c.MustGet("auth").(authContext)
-		type cursor struct {
-			Date string `json:"date"`
-			ID   string `json:"id"`
-		}
-		var items []Transaction
-		query := db.Where("user_id = ? AND deleted_at IS NULL", identity.UserID).Order("transaction_date DESC, id DESC")
-		if kind := c.Query("kind"); kind == "income" || kind == "expense" {
-			query = query.Where("kind = ?", kind)
-		}
-		if raw := c.Query("cursor"); raw != "" {
-			decoded, err := base64.RawURLEncoding.DecodeString(raw)
-			var point cursor
-			if err != nil || json.Unmarshal(decoded, &point) != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid cursor"})
-				return
-			}
-			date, dateErr := time.Parse("2006-01-02", point.Date)
-			if dateErr != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid cursor"})
-				return
-			}
-			if _, err := uuid.Parse(point.ID); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid cursor"})
-				return
-			}
-			query = query.Where("(transaction_date < ? OR (transaction_date = ? AND id < ?))", date, date, point.ID)
-		}
-		if err := query.Limit(26).Find(&items).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not load transactions"})
-			return
-		}
-		var nextCursor *string
-		if len(items) > 25 {
-			items = items[:25]
-			last := items[len(items)-1]
-			encoded, _ := json.Marshal(cursor{Date: last.TransactionDate.Format("2006-01-02"), ID: last.ID})
-			value := base64.RawURLEncoding.EncodeToString(encoded)
-			nextCursor = &value
-		}
-		c.JSON(http.StatusOK, gin.H{"transactions": items, "nextCursor": nextCursor})
-	}
-}
+// Pending accounts cannot authenticate; their password is chosen only after email verification.
+const pendingPasswordHash = "!"
 
-func createTransaction(db *gorm.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		identity := c.MustGet("auth").(authContext)
-		var input struct {
-			Kind       string  `json:"kind" binding:"required,oneof=income expense"`
-			Amount     int64   `json:"amount" binding:"required,gt=0"`
-			Date       string  `json:"date" binding:"required"`
-			CategoryID *string `json:"categoryId"`
-			Merchant   string  `json:"merchant"`
-			Note       string  `json:"note"`
-		}
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Enter a valid transaction"})
-			return
-		}
-		date, err := time.Parse("2006-01-02", input.Date)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Date must use YYYY-MM-DD"})
-			return
-		}
-		if input.CategoryID != nil {
-			if _, err := uuid.Parse(*input.CategoryID); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Category is invalid"})
-				return
-			}
-			var count int64
-			if err := db.Table("categories").Where("id = ? AND user_id = ? AND kind = ?", *input.CategoryID, identity.UserID, input.Kind).Count(&count).Error; err != nil || count == 0 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Category is invalid for this transaction"})
-				return
-			}
-		}
-		if len(input.Merchant) > 120 || len(input.Note) > 2000 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Merchant or note is too long"})
-			return
-		}
-		item := Transaction{ID: uuid.NewString(), UserID: identity.UserID, Kind: input.Kind, Amount: input.Amount, TransactionDate: date, CategoryID: input.CategoryID, Merchant: input.Merchant, Note: input.Note}
-		if err := db.Create(&item).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not save transaction"})
-			return
-		}
-		c.JSON(http.StatusCreated, gin.H{"transaction": item})
-	}
-}
-
-func registerAccount(db *gorm.DB, secure bool) gin.HandlerFunc {
+func registerAccount(db *gorm.DB, origin string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
-			Email    string `json:"email" binding:"required"`
-			Password string `json:"password" binding:"required"`
+			Email string `json:"email" binding:"required"`
 		}
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Enter a valid email and password"})
+		if c.ShouldBindJSON(&input) != nil {
+			c.JSON(400, gin.H{"error": "Enter a valid email address"})
 			return
 		}
 		input.Email = strings.ToLower(strings.TrimSpace(input.Email))
-		if len(input.Email) > 254 || !strings.Contains(input.Email, "@") || len(input.Password) < 12 || len(input.Password) > 128 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Enter a valid email and a password between 12 and 128 characters"})
+		address, err := mail.ParseAddress(input.Email)
+		if len(input.Email) > 254 || err != nil || address.Address != input.Email || strings.ContainsAny(input.Email, "\r\n") {
+			c.JSON(400, gin.H{"error": "Enter a valid email address"})
 			return
 		}
-		hash, err := hashPassword(input.Password)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not create account"})
+		user := authUser{ID: uuid.NewString(), Email: input.Email, PasswordHash: pendingPasswordHash, Currency: "IDR", Locale: "en", Opening: 0}
+		result := db.Table("users").Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "email"}}, DoNothing: true}).Create(&user)
+		if result.Error != nil {
+			c.JSON(500, gin.H{"error": "Could not create account"})
 			return
 		}
-		user := authUser{ID: uuid.NewString(), Email: input.Email, PasswordHash: hash, Currency: "IDR", Locale: "en", Opening: 0}
-		if err := db.Table("users").Create(&user).Error; err != nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "Could not create account with those details"})
-			return
+		// Existing verified or deleted accounts are left untouched. Repeated pending
+		// registrations request a link without ever adopting a supplied password.
+		var pending authUser
+		if db.Table("users").Where("email = ? AND deleted_at IS NULL AND email_verified_at IS NULL", input.Email).Take(&pending).Error == nil {
+			_ = issueAuthToken(db, pending.ID, pending.Email, "verify", origin)
 		}
-		csrf, err := createSession(db, user.ID, c, secure)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not start session"})
-			return
-		}
-		c.JSON(http.StatusCreated, gin.H{"user": gin.H{"id": user.ID, "email": user.Email}, "csrfToken": csrf})
+		c.JSON(http.StatusCreated, gin.H{"message": "If eligible, a verification link will be sent"})
 	}
 }
 
-func login(db *gorm.DB, secure bool) gin.HandlerFunc {
+// A fixed, non-secret dummy hash keeps unknown and pending logins on the same
+// expensive password-verification path as ordinary invalid logins.
+const dummyPasswordHash = "$argon2id$v=19$m=65536,t=3,p=2$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+func login(db *gorm.DB, secure bool, origin string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
 			Email    string `json:"email" binding:"required"`
 			Password string `json:"password" binding:"required"`
 		}
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Enter your email and password"})
+		if c.ShouldBindJSON(&input) != nil {
+			c.JSON(400, gin.H{"error": "Enter your email and password"})
 			return
 		}
 		var user authUser
 		err := db.Table("users").Where("email = ? AND deleted_at IS NULL", strings.ToLower(strings.TrimSpace(input.Email))).Take(&user).Error
-		if err != nil || !verifyPassword(input.Password, user.PasswordHash) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Email or password is incorrect"})
+		encoded := dummyPasswordHash
+		if err == nil && user.EmailVerifiedAt != nil {
+			encoded = user.PasswordHash
+		}
+		valid := verifyPassword(input.Password, encoded)
+		if err == nil && user.EmailVerifiedAt == nil {
+			_ = issueAuthToken(db, user.ID, user.Email, "verify", origin)
+		}
+		if err != nil || user.EmailVerifiedAt == nil || !valid {
+			c.JSON(401, gin.H{"error": "Check your email and password. If your account needs verification, check your inbox."})
 			return
 		}
 		csrf, err := createSession(db, user.ID, c, secure)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not start session"})
+			c.JSON(500, gin.H{"error": "Could not start session"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"user": gin.H{"id": user.ID, "email": user.Email}, "csrfToken": csrf})
+		c.JSON(200, gin.H{"user": gin.H{"id": user.ID, "email": user.Email}, "csrfToken": csrf})
 	}
 }
 
@@ -227,7 +157,7 @@ func loadSession(db *gorm.DB) gin.HandlerFunc {
 			CSRFHash  string
 			ExpiresAt time.Time
 		}
-		err = db.Table("sessions").Select("sessions.user_id, users.email, sessions.token_hash, sessions.csrf_hash, sessions.expires_at").Joins("JOIN users ON users.id = sessions.user_id").Where("sessions.token_hash = ? AND sessions.expires_at > ? AND users.deleted_at IS NULL", secretHash(rawToken), time.Now().UTC()).Take(&result).Error
+		err = db.Table("sessions").Select("sessions.user_id, users.email, sessions.token_hash, sessions.csrf_hash, sessions.expires_at").Joins("JOIN users ON users.id = sessions.user_id").Where("sessions.token_hash = ? AND sessions.expires_at > ? AND users.deleted_at IS NULL AND users.email_verified_at IS NOT NULL", secretHash(rawToken), time.Now().UTC()).Take(&result).Error
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Sign in required"})
 			return
@@ -359,10 +289,12 @@ var authAttempts = struct {
 	lastCleanup time.Time
 }{byIP: make(map[string]attemptWindow)}
 
-func authRateLimit() gin.HandlerFunc {
+func authRateLimit() gin.HandlerFunc     { return authRateLimitFor("auth", 10) }
+func authLinkRateLimit() gin.HandlerFunc { return authRateLimitFor("link-check", 30) }
+func authRateLimitFor(scope string, limit int) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		now := time.Now()
-		ip := c.ClientIP()
+		ip := scope + ":" + c.ClientIP()
 		authAttempts.Lock()
 		if now.Sub(authAttempts.lastCleanup) > 15*time.Minute {
 			for key, old := range authAttempts.byIP {
@@ -379,7 +311,7 @@ func authRateLimit() gin.HandlerFunc {
 		window.count++
 		authAttempts.byIP[ip] = window
 		authAttempts.Unlock()
-		if window.count > 10 {
+		if window.count > limit {
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "Try again later"})
 			return
 		}

@@ -14,12 +14,18 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+      - "1025:1025"
   api:
     build: ./services/api
     environment:
       PORT: "8080"
       DATABASE_URL: postgres://pocket_buddy:local_dev_only@db:5432/pocket_buddy?sslmode=disable
       WEB_ORIGIN: http://localhost:3000
+      MAILPIT_HOST: mailpit
     ports:
       - "8080:8080"
     depends_on:
@@ -32,6 +38,7 @@ services:
     volumes:
       - .:/workspace
       - web_node_modules:/workspace/node_modules
+      - web_next_dev:/workspace/apps/web/.next-dev
     ports:
       - "3000:3000"
     environment:
@@ -41,3 +48,4 @@ services:
 volumes:
   pgdata:
   web_node_modules:
+  web_next_dev:

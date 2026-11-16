@@ -84,7 +84,8 @@
   font-size:12px;
   cursor:pointer;
 }
-.below-card-links .export-csv-link:hover { color:var(--aqua); }
+.below-card-links .export-csv-link:hover:not(:disabled) { color:var(--aqua); }
+.below-card-links .export-csv-link:disabled { opacity:.45; cursor:not-allowed; }
 @media(max-width:620px) {
   .below-card-links .export-csv-link { font-size:11px; }
 }

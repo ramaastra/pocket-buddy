@@ -117,3 +117,7 @@
 
 .child-category{padding-left:38px}.child-category::after{position:absolute;top:-1px;bottom:0;left:14px;width:15px;content:"";border-left:1px solid rgba(194,241,143,.24);background:linear-gradient(rgba(194,241,143,.24),rgba(194,241,143,.24)) left center / 15px 1px no-repeat;pointer-events:none}.child-category:not(:has(+ .child-category))::after{bottom:50%;background:none;border-bottom:1px solid rgba(194,241,143,.24);border-bottom-left-radius:6px}.child-category strong{color:#b9c8bd;font-weight:550}
 .child-category + .child-category{border-top-color:transparent;background:linear-gradient(rgba(224,242,228,.075),rgba(224,242,228,.075)) right top / calc(100% - 38px) 1px no-repeat}
+
+/* Keep an empty transaction list the same height as other empty lists. */
+.transactions-ledger:has(> .empty-state) { flex:0 0 auto; }
+.transactions-ledger > .empty-state { flex:0 0 auto; }

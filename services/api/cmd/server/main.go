@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	migrationfiles "pocket-buddy/services/api/migrations"
 )
 
@@ -33,6 +35,7 @@ type Category struct {
 	Kind     string  `gorm:"not null" json:"kind"`
 }
 type Transaction struct {
+	Description     string    `json:"description"`
 	ID              string    `gorm:"type:uuid;primaryKey" json:"id"`
 	UserID          string    `gorm:"type:uuid;index;not null" json:"-"`
 	CategoryID      *string   `gorm:"type:uuid" json:"categoryId"`
@@ -46,34 +49,23 @@ type Transaction struct {
 
 func main() {
 	dsn := env("DATABASE_URL", "postgres://pocket_buddy:local_dev_only@localhost:5432/pocket_buddy?sslmode=disable")
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	if err != nil {
 		log.Fatalf("connect to PostgreSQL: %v", err)
 	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		log.Fatalf("get PostgreSQL connection: %v", err)
-	}
-	driver, err := postgresmigrate.WithInstance(sqlDB, &postgresmigrate.Config{})
-	if err != nil {
-		log.Fatalf("configure migration driver: %v", err)
-	}
-	source, err := iofs.New(migrationfiles.Files, ".")
-	if err != nil {
-		log.Fatalf("load database migrations: %v", err)
-	}
-	migrator, err := migrate.NewWithInstance("iofs", source, "postgres", driver)
-	if err != nil {
-		log.Fatalf("configure database migrations: %v", err)
-	}
-	if err := migrator.Up(); err != nil && err != migrate.ErrNoChange {
-		log.Fatalf("apply database migrations: %v", err)
-	}
-	if sourceErr, dbErr := migrator.Close(); sourceErr != nil || dbErr != nil {
-		log.Printf("close migration resources: source=%v database=%v", sourceErr, dbErr)
+	if err := runMigrations(dsn); err != nil {
+		log.Fatal(err)
 	}
 
-	r := gin.Default()
+	startTransactionPurge(db)
+	startAccountPurge(db)
+
+	// Request URLs can contain financial search terms; avoid access logs.
+	r := gin.New()
+	r.Use(gin.CustomRecovery(func(c *gin.Context, _ interface{}) {
+		log.Print("request failed unexpectedly")
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}))
 	if err := r.SetTrustedProxies(nil); err != nil {
 		log.Fatalf("disable proxy header trust until trusted proxies are configured: %v", err)
 	}
@@ -88,6 +80,7 @@ func main() {
 	webOrigin := env("WEB_ORIGIN", "http://localhost:3000")
 	secureCookies := env("COOKIE_SECURE", fmt.Sprintf("%t", strings.HasPrefix(webOrigin, "https://"))) == "true"
 	registerAuthRoutes(r, db, webOrigin, secureCookies)
+	registerProfileRoutes(r, db, webOrigin)
 	if err := r.Run(":" + env("PORT", "8080")); err != nil {
 		log.Fatal(err)
 	}
@@ -97,4 +90,56 @@ func env(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func runMigrations(dsn string) error {
+	// The migration driver owns and closes its database handle. Use a separate
+	// pool so closing the runner cannot close the application pool.
+	migrationDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return fmt.Errorf("open migration connection: %w", err)
+	}
+	driver, err := postgresmigrate.WithInstance(migrationDB, &postgresmigrate.Config{})
+	if err != nil {
+		migrationDB.Close()
+		return fmt.Errorf("configure migration driver: %w", err)
+	}
+	source, err := iofs.New(migrationfiles.Files, ".")
+	if err != nil {
+		driver.Close()
+		return fmt.Errorf("load database migrations: %w", err)
+	}
+	migrator, err := migrate.NewWithInstance("iofs", source, "postgres", driver)
+	if err != nil {
+		source.Close()
+		driver.Close()
+		return fmt.Errorf("configure database migrations: %w", err)
+	}
+	if err := migrator.Up(); err != nil && err != migrate.ErrNoChange {
+		migrator.Close()
+		return fmt.Errorf("apply database migrations: %w", err)
+	}
+	if sourceErr, dbErr := migrator.Close(); sourceErr != nil || dbErr != nil {
+		return fmt.Errorf("close migration resources: source=%v database=%v", sourceErr, dbErr)
+	}
+
+	return nil
+}
+
+// Expired soft-deleted transactions are erased on startup and periodically
+// while the API is running. Failed runs are retried on the next interval.
+func startTransactionPurge(db *gorm.DB) {
+	run := func() {
+		if err := purgeExpiredTransactions(db, time.Now().UTC()); err != nil {
+			log.Printf("transaction retention cleanup failed: %v", err)
+		}
+	}
+	run()
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			run()
+		}
+	}()
 }

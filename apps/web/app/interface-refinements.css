@@ -77,6 +77,10 @@
 .schedule-row { grid-template-columns: 38px minmax(0,1fr) auto auto; }
 .schedule-actions { position:relative; z-index:3; display:flex; align-items:center; gap:4px; }
 .schedule-actions .row-action:focus-visible { outline:2px solid rgba(194,241,143,.75); outline-offset:2px; }
+.deleted-row .restore-action { flex:none; }
+.deleted-row .restore-action:hover { color:#fff; }
+.deleted-row .restore-action:focus-visible { outline:2px solid rgba(194,241,143,.75); outline-offset:2px; }
+@media(max-width:620px) { .deleted-row .restore-action { margin-left:auto; } }
 .schedule-actions .schedule-toggle:hover { color:#fff; }
 @media(max-width:620px) {
   .schedule-row { grid-template-columns:34px minmax(0,1fr) auto auto; gap:8px; }
@@ -110,3 +114,96 @@
 .category-color-choice.blue span{background:#a9d5ff}.category-color-choice.orange span{background:#ffd08c}.category-color-choice.teal span{background:#8be3cf}.category-color-choice.red span{background:#ffaaa8}.category-color-choice.indigo span{background:#b8c2ff}
 .category-dot.blue,.transaction-icon.blue{background:rgba(109,174,255,.15);color:#a9d5ff}.category-dot.orange,.transaction-icon.orange{background:rgba(255,177,83,.15);color:#ffd08c}.category-dot.teal,.transaction-icon.teal{background:rgba(93,213,180,.15);color:#8be3cf}.category-dot.red,.transaction-icon.red{background:rgba(255,113,113,.15);color:#ffaaa8}.category-dot.indigo,.transaction-icon.indigo{background:rgba(129,145,255,.16);color:#b8c2ff}
 .category-choice-grid{width:100%;min-width:0;grid-template-columns:repeat(6,minmax(0,1fr))}.category-choice{min-width:0}.category-color-choices{max-width:100%;flex-wrap:wrap;gap:7px}
+
+/* List cards grow with their content, then keep their controls visible while rows scroll. */
+.list-page {
+  --list-edge-spacing:42px;
+  height:100dvh;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  box-sizing:border-box;
+  padding-block:var(--list-edge-spacing);
+}
+.list-page > :not(.ledger-card):not(.category-card) { flex:none; }
+.list-page > .ledger-card,
+.list-page > .category-card {
+  display:flex;
+  flex:0 1 auto;
+  flex-direction:column;
+  min-height:0;
+}
+.list-page .shared-list-display {
+  display:flex;
+  flex:0 1 auto;
+  flex-direction:column;
+  min-height:0;
+}
+.shared-list-display > .transaction-toolbar,
+.shared-list-display > .pagination { flex:none; }
+.shared-list-scroll,
+.list-page .transactions-scroll {
+  flex:0 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+}
+.shared-list-scroll:focus-visible {
+  outline:2px solid var(--green);
+  outline-offset:-2px;
+}
+@media(max-width:820px) { .list-page { --list-edge-spacing:34px; } }
+@media(max-width:620px) {
+  .list-page {
+    --list-edge-spacing:26px;
+    height:calc(100dvh - 56px);
+    min-height:0;
+    padding-bottom:calc(70px + var(--list-edge-spacing));
+  }
+}
+/* Keep a usable row area on short screens; the page can scroll if headings need extra room. */
+@media(max-height:700px) {
+  .list-page > .ledger-card,
+  .list-page > .category-card { min-height:220px; }
+}
+@media(max-width:620px) and (max-height:700px) {
+  .list-page { margin-bottom:70px; }
+}
+
+/* Keep list rows within their scroll area, including long unbroken names. */
+.shared-list-scroll {
+  box-sizing:border-box;
+  min-width:0;
+  margin-inline:-20px;
+  padding-inline:20px;
+  overflow-x:hidden;
+}
+.shared-list-scroll > *,
+.deleted-row,
+.budget-info > span,
+.pending-row > span:nth-child(2),
+.category-name .category-link { min-width:0; }
+.deleted-row > span:nth-child(2) strong,
+.budget-info :is(strong, small),
+.pending-row > span:nth-child(2),
+.category-name .category-link { overflow-wrap:anywhere; }
+.deleted-row .transaction-icon { flex:none; }
+.deleted-row > b,
+.schedule-row > b {
+  min-width:0;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  text-align:right;
+}
+.summary-strip { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.summary-strip strong { min-width:0; overflow-wrap:anywhere; }
+.pending-row > div { min-width:0; flex-wrap:wrap; }
+@media(max-width:620px) {
+  .shared-list-scroll { margin-inline:-15px; padding-inline:15px; }
+}
+.transactions-scroll .transaction-amount {
+  overflow:visible;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
