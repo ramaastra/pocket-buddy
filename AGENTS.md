@@ -17,6 +17,7 @@ This file is the shared entry point for coding agents. Keep project knowledge in
 - Keep the web frontend, Go API, and database boundaries described in `docs/architecture.md`.
 - Treat financial values as integer minor units and always validate transaction kind independently of category.
 - Never log passwords, session identifiers, CSRF tokens, API keys, or uploaded financial images.
+- Treat local `.env` files as user-owned secret stores. Do not open, print, search, parse, source, or otherwise read their contents. To check configuration, inspect only whether a running service received a variable, using a value-free check. If a local `.env` change is needed, ask the user to make it; tracked templates such as `.env.example` may be edited normally.
 - Do not retain screenshot uploads after extraction. Save only user-confirmed transactions.
 - Do not claim a feature is complete unless it is implemented; update the implementation status in the relevant docs when it materially changes.
 - Prefer small changes that preserve existing user data and provide a reversible path for data migrations.

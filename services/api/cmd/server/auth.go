@@ -34,13 +34,14 @@ type authSession struct {
 }
 
 type authUser struct {
-	ID              string     `gorm:"type:uuid;primaryKey"`
-	Email           string     `gorm:"not null"`
-	EmailVerifiedAt *time.Time `gorm:"column:email_verified_at"`
-	PasswordHash    string     `gorm:"column:password_hash;not null"`
-	Currency        string     `gorm:"not null"`
-	Locale          string     `gorm:"not null"`
-	Opening         int64      `gorm:"column:opening_balance;not null"`
+	ID                      string     `gorm:"type:uuid;primaryKey"`
+	Email                   string     `gorm:"not null"`
+	EmailVerifiedAt         *time.Time `gorm:"column:email_verified_at"`
+	PasswordHash            string     `gorm:"column:password_hash;not null"`
+	Currency                string     `gorm:"not null"`
+	Locale                  string     `gorm:"not null"`
+	Opening                 int64      `gorm:"column:opening_balance;not null"`
+	TransactionEntryDefault string     `gorm:"column:transaction_entry_default;not null"`
 }
 
 type authContext struct {
@@ -69,6 +70,7 @@ func registerAuthRoutes(r *gin.Engine, db *gorm.DB, origin string, secureCookies
 	auth.DELETE("/auth/account", requireOrigin(origin), requireCSRF(), deleteAccount(db, secureCookies))
 
 	registerTransactionRoutes(auth, db, origin)
+	registerExtractionRoutes(auth, db, origin)
 	registerCategoryRoutes(auth, db, origin)
 	registerBudgetRoutes(auth, db, origin)
 	registerRecurringRoutes(auth, db, origin)
@@ -92,7 +94,7 @@ func registerAccount(db *gorm.DB, origin string) gin.HandlerFunc {
 			c.JSON(400, gin.H{"error": "Enter a valid email address"})
 			return
 		}
-		user := authUser{ID: uuid.NewString(), Email: input.Email, PasswordHash: pendingPasswordHash, Currency: "IDR", Locale: "en", Opening: 0}
+		user := authUser{ID: uuid.NewString(), Email: input.Email, PasswordHash: pendingPasswordHash, Currency: "IDR", Locale: "en", Opening: 0, TransactionEntryDefault: "manual"}
 		result := db.Table("users").Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "email"}}, DoNothing: true}).Create(&user)
 		if result.Error != nil {
 			c.JSON(500, gin.H{"error": "Could not create account"})

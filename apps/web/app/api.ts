@@ -23,3 +23,17 @@ export async function apiRequest<T>(path: string, body?: unknown, csrfToken?: st
   const bodyText = await response.text();
   return bodyText.trim() ? JSON.parse(bodyText) as T : undefined as T;
 }
+
+export async function apiUpload<T>(path: string, file: File, csrfToken: string): Promise<T> {
+  const form = new FormData();
+  form.append('image', file);
+  const response = await fetch(`${apiURL}/api${path}`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'X-CSRF-Token': csrfToken }, body: form,
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new ApiError(typeof result.error === 'string' ? result.error : 'Could not reach the server. Try again.', response.status, typeof result.code === 'string' ? result.code : undefined);
+  }
+  return await response.json() as T;
+}

@@ -52,10 +52,68 @@ func registerTransactionRoutes(auth *gin.RouterGroup, db *gorm.DB, origin string
 	t.GET("", listTransactions(db, false, false))
 	t.GET("/export.csv", listTransactions(db, false, true))
 	t.GET("/deleted", listTransactions(db, true, false))
+	t.POST("/batch", requireOrigin(origin), requireCSRF(), saveTransactionsBatch(db))
 	t.POST("", requireOrigin(origin), requireCSRF(), saveTransaction(db, false))
 	t.PUT("/:id", requireOrigin(origin), requireCSRF(), saveTransaction(db, true))
 	t.DELETE("/:id", requireOrigin(origin), requireCSRF(), deleteTransaction(db))
 	t.POST("/:id/restore", requireOrigin(origin), requireCSRF(), restoreTransaction(db))
+}
+
+func saveTransactionsBatch(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var input struct {
+			Transactions []transactionInput `json:"transactions" binding:"required,min=1,max=50,dive"`
+		}
+		if c.ShouldBindJSON(&input) != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Choose at least one valid transaction"})
+			return
+		}
+		user := c.MustGet("auth").(authContext).UserID
+		items := make([]Transaction, 0, len(input.Transactions))
+		for _, tx := range input.Transactions {
+			date, err := time.Parse("2006-01-02", tx.Date)
+			if (tx.Kind != "income" && tx.Kind != "expense") || tx.Amount <= 0 || tx.Amount > 9007199254740991 || err != nil || len(tx.Description) == 0 || len(tx.Description) > 120 || len(tx.Merchant) > 120 || len(tx.Note) > 2000 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Enter valid transaction details"})
+				return
+			}
+			if tx.CategoryID != nil {
+				if _, err := uuid.Parse(*tx.CategoryID); err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Category is invalid"})
+					return
+				}
+			}
+			items = append(items, Transaction{ID: uuid.NewString(), UserID: user, Description: tx.Description, Kind: tx.Kind, Amount: tx.Amount, TransactionDate: date, CategoryID: tx.CategoryID, Merchant: tx.Merchant, Note: tx.Note})
+		}
+		err := db.Transaction(func(tx *gorm.DB) error {
+			if err := lockCategoryChanges(tx, user); err != nil {
+				return err
+			}
+			for i, record := range items {
+				if record.CategoryID != nil {
+					var count int64
+					if err := tx.Table("categories").Where("id = ? AND user_id = ? AND kind = ? AND deleted_at IS NULL", *record.CategoryID, user, record.Kind).Count(&count).Error; err != nil {
+						return err
+					}
+					if count == 0 {
+						return errCategoryInvalid
+					}
+				}
+				if err := tx.Create(&items[i]).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if errors.Is(err, errCategoryInvalid) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Category is invalid for this transaction"})
+			return
+		}
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not save transactions"})
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{"count": len(items)})
+	}
 }
 
 func listTransactions(db *gorm.DB, deleted, export bool) gin.HandlerFunc {

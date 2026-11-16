@@ -57,18 +57,19 @@ func TestSettingsWithSession(t *testing.T) {
 		r.ServeHTTP(w, req)
 		return w
 	}
-	if w := request("PUT", `{"currency":"IDR","locale":"en","openingBalance":12345}`); w.Code != 200 {
+	if w := request("PUT", `{"currency":"IDR","locale":"en","openingBalance":12345,"transactionEntryDefault":"scan"}`); w.Code != 200 {
 		t.Fatalf("update: %d %s", w.Code, w.Body.String())
 	}
 	w := request("GET", "")
 	var settings struct {
-		Currency string `json:"currency"`
-		Opening  int64  `json:"openingBalance"`
+		Currency                string `json:"currency"`
+		Opening                 int64  `json:"openingBalance"`
+		TransactionEntryDefault string `json:"transactionEntryDefault"`
 	}
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &settings) != nil || settings.Currency != "IDR" || settings.Opening != 12345 {
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &settings) != nil || settings.Currency != "IDR" || settings.Opening != 12345 || settings.TransactionEntryDefault != "scan" {
 		t.Fatalf("read: %d %s", w.Code, w.Body.String())
 	}
-	if w := request("PUT", `{"currency":"USD","locale":"en","openingBalance":12345}`); w.Code != 400 {
+	if w := request("PUT", `{"currency":"USD","locale":"en","openingBalance":12345,"transactionEntryDefault":"scan"}`); w.Code != 400 {
 		t.Fatalf("unsupported currency accepted: %d", w.Code)
 	}
 }

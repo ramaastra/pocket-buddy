@@ -26,6 +26,8 @@ services:
       DATABASE_URL: postgres://pocket_buddy:local_dev_only@db:5432/pocket_buddy?sslmode=disable
       WEB_ORIGIN: http://localhost:3000
       MAILPIT_HOST: mailpit
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
     ports:
       - "8080:8080"
     depends_on:
