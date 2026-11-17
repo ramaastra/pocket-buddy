@@ -24,7 +24,7 @@ The browser calls the Go API. The Go API validates inputs, enforces user ownersh
 
 ## Local development
 
-Run `docker compose up --build` for the web client on port 3000, API on 8080, PostgreSQL on 5432, and Mailpit web UI on 8025. Mail is restricted to local Mailpit; no production provider is configured. The migration runner uses a separate connection pool from the application. Existing databases created by the former auto-migration scaffold require a reviewed adoption procedure; do not apply the initial migration blindly or destroy existing data.
+Run `docker compose up --build` for the web client on port 3000, API on 8080, PostgreSQL on 5432, and Mailpit web UI on 8025. Mail is restricted to local Mailpit. The migration runner uses a separate connection pool from the application. Existing unversioned Pocket Buddy tables cause startup to stop before migrations are applied. Follow [the database adoption procedure](database-adoption.md); do not apply the initial migration blindly or destroy existing data. This project is for local development only.
 
 ## Implementation status
 

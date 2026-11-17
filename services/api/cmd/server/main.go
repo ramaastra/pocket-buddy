@@ -89,6 +89,7 @@ func main() {
 		log.Fatal(err)
 	}
 }
+
 func env(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -102,6 +103,13 @@ func runMigrations(dsn string) error {
 	migrationDB, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return fmt.Errorf("open migration connection: %w", err)
+	}
+	// Do not let golang-migrate create its history table and apply 000001 to a
+	// database created by the former AutoMigrate scaffold. Such a database
+	// needs an explicit adoption review before any migration is recorded.
+	if err := refuseUnversionedApplicationSchema(migrationDB); err != nil {
+		migrationDB.Close()
+		return err
 	}
 	driver, err := postgresmigrate.WithInstance(migrationDB, &postgresmigrate.Config{})
 	if err != nil {
@@ -127,6 +135,33 @@ func runMigrations(dsn string) error {
 		return fmt.Errorf("close migration resources: source=%v database=%v", sourceErr, dbErr)
 	}
 
+	return nil
+}
+
+func refuseUnversionedApplicationSchema(db *sql.DB) error {
+	var historyExists bool
+	if err := db.QueryRow(`SELECT to_regclass('public.schema_migrations') IS NOT NULL`).Scan(&historyExists); err != nil {
+		return fmt.Errorf("inspect migration history: %w", err)
+	}
+	var appTables int
+	if err := db.QueryRow(`
+		SELECT count(*)
+		FROM information_schema.tables
+		WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+		  AND table_name IN ('users', 'categories', 'transactions', 'budgets',
+		                     'recurring_transactions', 'recurring_occurrences', 'sessions')
+	`).Scan(&appTables); err != nil {
+		return fmt.Errorf("inspect existing application tables: %w", err)
+	}
+	var historyHasRows bool
+	if historyExists {
+		if err := db.QueryRow(`SELECT EXISTS (SELECT 1 FROM public.schema_migrations)`).Scan(&historyHasRows); err != nil {
+			return fmt.Errorf("inspect migration history contents: %w", err)
+		}
+	}
+	if appTables > 0 && (!historyExists || !historyHasRows) {
+		return fmt.Errorf("refusing to migrate an unversioned database containing %d Pocket Buddy table(s); back it up and follow docs/database-adoption.md before starting the API", appTables)
+	}
 	return nil
 }
 
