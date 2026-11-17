@@ -157,8 +157,9 @@
 @media(max-width:620px) {
   .list-page {
     --list-edge-spacing:26px;
-    height:calc(100dvh - 56px);
+    height:calc(100dvh - 69px - env(safe-area-inset-top, 0px));
     min-height:0;
+    padding-top:8px;
     padding-bottom:calc(70px + var(--list-edge-spacing));
   }
 }
