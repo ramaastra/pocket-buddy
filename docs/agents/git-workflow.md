@@ -13,7 +13,7 @@ Explicit user instructions to commit or stage the identified work count as confi
 
 ## Branches
 
-Keep the existing main development branch as the stable line. Before a substantial feature, redesign, or risky experiment, check the current branch and working tree, then recommend a short-lived local branch if it would help isolate the work. Explain any existing uncommitted changes that would follow a branch switch and ask for confirmation before creating or switching branches. Continue work that does not depend on the branch decision while waiting. Small, low-risk changes can stay on the current branch.
+Keep the existing main development branch as the stable line. For substantial work that is expected to take a long time—such as developing a feature, refactoring a feature, a redesign, or a risky experiment—always start in an isolated Git worktree with its own short-lived branch. Do this before implementation; do not merely recommend a worktree or ask whether isolation is wanted. Check the current branch and working tree first. Leave existing uncommitted changes in the original checkout, and do not copy them into the worktree unless they are explicitly part of the task. If the worktree or branch cannot be created safely, explain the blocker and continue only with work that does not depend on it. Small, low-risk edits such as changing colors or wording can stay in the current checkout.
 
 Name branches for the changes they contain, using a short, descriptive name such as `feat/accounts-transactions-categories` or `fix/session-retry`. Before pushing a branch created by a tool, rename it if its name describes the tool or run rather than the work.
 
