@@ -10,6 +10,7 @@ import './app.css';
 import './forms.css';
 import './list-refinements.css';
 import './interface-refinements.css';
+import PocketBuddyApp from './pocket-buddy-app';
 
 const theme = createTheme({ fontFamily: '"Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif' });
 
@@ -19,5 +20,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en" {...mantineHtmlProps}><head><ColorSchemeScript forceColorScheme="dark" /></head><body><MantineProvider theme={theme} forceColorScheme="dark">{children}</MantineProvider></body></html>;
+  return <html lang="en" {...mantineHtmlProps}><head><ColorSchemeScript forceColorScheme="dark" /></head><body><MantineProvider theme={theme} forceColorScheme="dark"><PocketBuddyApp />{children}</MantineProvider></body></html>;
 }

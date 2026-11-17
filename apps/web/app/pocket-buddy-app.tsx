@@ -352,9 +352,36 @@ function filterQueryKey(label: string) {
   return ({ 'All types': 'type', 'All periods': 'period', 'All spending': 'spending', 'All statuses': 'status', 'All frequencies': 'frequency', 'All groups': 'group' } as Record<string, string>)[label] || label.toLowerCase().replaceAll(' ', '-');
 }
 
+function RouteProgress({ active }: { active: boolean }) {
+  return <div className={`route-progress${active ? ' is-visible' : ''}`} role={active ? 'progressbar' : undefined} aria-label={active ? 'Loading page' : undefined} aria-valuetext={active ? 'Loading' : undefined} aria-hidden={!active}><span /></div>;
+}
+
 export default function PocketBuddyApp() {
   const pathname = usePathname() || '/';
   const router = useRouter();
+  const [routePending, setRoutePending] = useState(false);
+  const routePendingTimer = useRef<number | null>(null);
+  const beginRouteNavigation = useCallback(() => {
+    if (routePendingTimer.current !== null) window.clearTimeout(routePendingTimer.current);
+    routePendingTimer.current = window.setTimeout(() => setRoutePending(true), 120);
+  }, []);
+  const finishRouteNavigation = useCallback(() => {
+    if (routePendingTimer.current !== null) window.clearTimeout(routePendingTimer.current);
+    routePendingTimer.current = null;
+    setRoutePending(false);
+  }, []);
+  useEffect(() => finishRouteNavigation(), [pathname, finishRouteNavigation]);
+  useEffect(() => () => {
+    if (routePendingTimer.current !== null) window.clearTimeout(routePendingTimer.current);
+  }, []);
+  const navigate = useCallback((href: string) => {
+    if (new URL(href, window.location.href).pathname !== window.location.pathname) beginRouteNavigation();
+    router.push(href);
+  }, [beginRouteNavigation, router]);
+  const replaceRoute = useCallback((href: string) => {
+    if (new URL(href, window.location.href).pathname !== window.location.pathname) beginRouteNavigation();
+    router.replace(href);
+  }, [beginRouteNavigation, router]);
   const [hasScrolled, setHasScrolled] = useState(false);
   useEffect(() => {
     const updateScrollState = () => setHasScrolled(window.scrollY > 0);
@@ -396,14 +423,17 @@ export default function PocketBuddyApp() {
         return;
       }
       atGuardEntry = Boolean(event.state?.__pocketBuddyGuard);
+      if (window.location.pathname !== lastPath.current) beginRouteNavigation();
     };
     const onClick = (event: MouseEvent) => {
-      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !unsavedEditors.size) return;
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       const link = (event.target as Element | null)?.closest('a[href]') as HTMLAnchorElement | null;
-      if (!link || link.target === '_blank' || link.hasAttribute('download') || link.href === window.location.href) return;
-      event.preventDefault(); event.stopPropagation();
+      if (!link || link.target === '_blank' || link.hasAttribute('download')) return;
       const url = new URL(link.href);
-      request(() => { if (url.origin === window.location.origin) router.push(url.pathname + url.search + url.hash); else window.location.assign(url.href); });
+      if (url.origin !== window.location.origin || url.pathname === window.location.pathname) return;
+      if (!unsavedEditors.size) { beginRouteNavigation(); return; }
+      event.preventDefault(); event.stopPropagation();
+      request(() => navigate(url.pathname + url.search + url.hash));
     };
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       if (unsavedEditors.size) { event.preventDefault(); event.returnValue = ''; }
@@ -420,7 +450,7 @@ export default function PocketBuddyApp() {
       document.removeEventListener('click', onClick, true);
       window.removeEventListener('beforeunload', onBeforeUnload);
     };
-  }, [router]);
+  }, [beginRouteNavigation, navigate, router]);
   const discardDialog = <DeleteDialog opened={Boolean(discardAction)} onClose={() => setDiscardAction(null)} onConfirm={() => { const action = discardAction; setDiscardAction(null); unsavedEditors.clear(); setScanFile(''); setDrafts([]); action?.(); }} title="Discard your changes?" detail="Your unsaved changes will be lost." action="Discard changes" cancelLabel="Keep editing"/>;
   useEffect(() => { window.dispatchEvent(new Event(unsavedChangeEvent)); }, [pathname]);
   const [storedData, setData] = useState<DemoState>(seed);
@@ -514,13 +544,13 @@ export default function PocketBuddyApp() {
     const navigation = (window as Window & { navigation?: { currentEntry?: { index: number }; entries: () => { url?: string }[] } }).navigation;
     const previous = navigation?.entries()[(navigation.currentEntry?.index ?? 0) - (window.history.state?.__pocketBuddyGuard ? 2 : 1)]?.url;
     const hasSameOriginPrevious = previous ? new URL(previous, window.location.href).origin === window.location.origin : false;
-    requestDiscard(() => { if (hasSameOriginPrevious || (!navigation && inAppHistoryDepth.current > 0)) router.back(); else router.push(fallback); });
+    requestDiscard(() => { if (hasSameOriginPrevious || (!navigation && inAppHistoryDepth.current > 0)) router.back(); else navigate(fallback); });
   }
 
   useEffect(() => { setReady(sessionReady && !accountLoading && !accountError); }, [sessionReady, accountLoading, accountError]);
   useEffect(() => { if (ready && sessionReady && !session && dataMode === 'demo' && storedData !== demoSnapshot.current) { localStorage.setItem(STORE_KEY, JSON.stringify(storedData)); demoSnapshot.current = storedData; } }, [storedData, ready, sessionReady, session, dataMode]);
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 2800); return () => window.clearTimeout(timer); }, [notice]);
-  useEffect(() => { if (pathname === '/transactions/scan') router.replace('/transactions/new'); }, [pathname, router]);
+  useEffect(() => { if (pathname === '/transactions/scan') replaceRoute('/transactions/new'); }, [pathname, replaceRoute]);
 
   const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
   const monthTransactions = data.transactions.filter((t) => t.date.startsWith(selectedMonth));
@@ -547,12 +577,12 @@ export default function PocketBuddyApp() {
 
   async function addTransaction(tx: Omit<Transaction, 'id'>, id?: string) {
     if (session) {
-      try { const selectedCategory = tx.category ? data.categories.find((c) => c.kind === tx.kind && c.name === tx.category) : undefined; if (tx.category && !selectedCategory) throw new Error('Category is no longer available'); await apiRequest(id ? `/transactions/${id}` : '/transactions', { description: tx.name, kind: tx.kind, amount: tx.amount, date: tx.date, categoryId: selectedCategory?.id ?? null, merchant: tx.merchant || '', note: tx.note || '' }, session.csrfToken, id ? 'PUT' : 'POST'); try { await refreshAccount(session); } catch { setAccountError('Your transaction was saved, but your account could not be refreshed. Reload to continue.'); return; } setNotice(id ? 'Transaction updated' : 'Transaction saved'); router.push('/transactions'); } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not save transaction'); }
+      try { const selectedCategory = tx.category ? data.categories.find((c) => c.kind === tx.kind && c.name === tx.category) : undefined; if (tx.category && !selectedCategory) throw new Error('Category is no longer available'); await apiRequest(id ? `/transactions/${id}` : '/transactions', { description: tx.name, kind: tx.kind, amount: tx.amount, date: tx.date, categoryId: selectedCategory?.id ?? null, merchant: tx.merchant || '', note: tx.note || '' }, session.csrfToken, id ? 'PUT' : 'POST'); try { await refreshAccount(session); } catch { setAccountError('Your transaction was saved, but your account could not be refreshed. Reload to continue.'); return; } setNotice(id ? 'Transaction updated' : 'Transaction saved'); navigate('/transactions'); } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not save transaction'); }
       return;
     }
     setData((old) => ({ ...old, transactions: id ? old.transactions.map((t) => t.id === id ? { ...tx, id } : t) : [{ ...tx, id: `t${Date.now()}` }, ...old.transactions] }));
     setNotice(id ? 'Transaction updated' : 'Transaction saved');
-    router.push('/transactions');
+    navigate('/transactions');
   }
   async function addTransactions(items: Omit<Transaction, 'id'>[]) {
     if (!items.length) return;
@@ -564,32 +594,32 @@ export default function PocketBuddyApp() {
       });
       await apiRequest('/transactions/batch', { transactions }, session.csrfToken);
       setNotice(`${items.length} ${items.length === 1 ? 'transaction' : 'transactions'} saved`);
-      router.push('/transactions');
+      navigate('/transactions');
       try { await refreshAccount(session); } catch { setAccountError('Your transactions were saved, but your account could not be refreshed. Reload to continue.'); }
       return;
     }
     const createdAt = Date.now();
     setData((old) => ({ ...old, transactions: [...items.map((tx, index) => ({ ...tx, id: `t${createdAt}-${index}` })), ...old.transactions] }));
     setNotice(`${items.length} ${items.length === 1 ? 'transaction' : 'transactions'} saved`);
-    router.push('/transactions');
+    navigate('/transactions');
   }
   async function removeTransaction(tx: Transaction) {
-    if (session) { try { await apiRequest(`/transactions/${tx.id}`, {}, session.csrfToken, 'DELETE'); await refreshAccount(session); setNotice('Moved to Recently deleted'); if (pathname === `/transactions/${tx.id}`) router.push('/transactions'); } catch { setNotice('Could not delete transaction'); } return; }
+    if (session) { try { await apiRequest(`/transactions/${tx.id}`, {}, session.csrfToken, 'DELETE'); await refreshAccount(session); setNotice('Moved to Recently deleted'); if (pathname === `/transactions/${tx.id}`) navigate('/transactions'); } catch { setNotice('Could not delete transaction'); } return; }
     setData((old) => ({ ...old, transactions: old.transactions.filter((item) => item.id !== tx.id), deleted: [{ ...tx, deletedAt: new Date().toISOString().slice(0, 10) }, ...old.deleted] }));
     setNotice('Moved to Recently deleted');
-    if (pathname === `/transactions/${tx.id}`) router.push('/transactions');
+    if (pathname === `/transactions/${tx.id}`) navigate('/transactions');
   }
-  const removeCategory = async (id: string) => { if (session) { try { await apiRequest(`/categories/${id}`, {}, session.csrfToken, 'DELETE'); try { await refreshAccount(session); } catch { setAccountError('Your category was deleted, but your account could not be refreshed. Reload to continue.'); return; } setNotice('Category removed'); if (pathname === `/categories/${id}`) router.push('/categories'); } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not delete category'); } return; } setData((old) => { const deleted = old.categories.find((c) => c.id === id); if (!deleted || (deleted.kind === 'expense' && old.budgets.some((b) => b.category === deleted.name))) return old; return { ...old, categories: old.categories.filter((c) => c.id !== id).map((c) => c.kind === deleted.kind && c.parent === deleted.name ? { ...c, parent: undefined } : c), transactions: old.transactions.map((t) => t.kind === deleted.kind && t.category === deleted.name ? { ...t, category: '' } : t), deleted: old.deleted.map((t) => t.kind === deleted.kind && t.category === deleted.name ? { ...t, category: '' } : t), schedules: old.schedules.map((t) => t.kind === deleted.kind && t.category === deleted.name ? { ...t, category: '' } : t) }; }); setNotice('Category removed'); };
+  const removeCategory = async (id: string) => { if (session) { try { await apiRequest(`/categories/${id}`, {}, session.csrfToken, 'DELETE'); try { await refreshAccount(session); } catch { setAccountError('Your category was deleted, but your account could not be refreshed. Reload to continue.'); return; } setNotice('Category removed'); if (pathname === `/categories/${id}`) navigate('/categories'); } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not delete category'); } return; } setData((old) => { const deleted = old.categories.find((c) => c.id === id); if (!deleted || (deleted.kind === 'expense' && old.budgets.some((b) => b.category === deleted.name))) return old; return { ...old, categories: old.categories.filter((c) => c.id !== id).map((c) => c.kind === deleted.kind && c.parent === deleted.name ? { ...c, parent: undefined } : c), transactions: old.transactions.map((t) => t.kind === deleted.kind && t.category === deleted.name ? { ...t, category: '' } : t), deleted: old.deleted.map((t) => t.kind === deleted.kind && t.category === deleted.name ? { ...t, category: '' } : t), schedules: old.schedules.map((t) => t.kind === deleted.kind && t.category === deleted.name ? { ...t, category: '' } : t) }; }); setNotice('Category removed'); };
   async function addBudget(budget: Omit<Budget, 'id' | 'spent'>) {
     if (session) {
       const category = data.categories.find((c) => c.kind === 'expense' && c.name === budget.category);
       if (!category) throw new Error('Choose an available expense category.');
       await apiRequest('/budgets', { categoryId: category.id, amount: budget.limit, period: budget.period.toLowerCase() }, session.csrfToken);
       try { await refreshAccount(session); } catch { setAccountError('Your budget was saved, but your account could not be refreshed. Reload to continue.'); return; }
-      setNotice('Budget created'); router.push('/budgets'); return;
+      setNotice('Budget created'); navigate('/budgets'); return;
     }
     setData((old) => ({ ...old, budgets: [...old.budgets, { ...budget, id: `b${Date.now()}`, spent: 0 }] }));
-    setNotice('Budget created'); router.push('/budgets');
+    setNotice('Budget created'); navigate('/budgets');
   }
   async function updateBudget(budget: Budget, updates: Omit<Budget, 'id' | 'spent'>) {
     if (session) {
@@ -606,24 +636,24 @@ export default function PocketBuddyApp() {
       try { await refreshAccount(session); } catch { setAccountError('Your budget was removed, but your account could not be refreshed. Reload to continue.'); return; }
     } else setData((old) => ({ ...old, budgets: old.budgets.filter((b) => b.id !== id) }));
     setNotice('Budget removed');
-    if (pathname === `/budgets/${id}`) router.push('/budgets');
+    if (pathname === `/budgets/${id}`) navigate('/budgets');
   }
   function schedulePayload(schedule: Omit<Schedule, 'id'>) { const now = new Date(); const on = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; return { on, description: schedule.name, categoryId: data.categories.find((c) => c.kind === schedule.kind && c.name === schedule.category)?.id || null, kind: schedule.kind, amount: schedule.amount, frequency: schedule.cadence.toLowerCase(), nextDate: schedule.nextDate, paused: !!schedule.paused }; }
   function saveSchedule(id: string, updates: Partial<Schedule>) { const schedule = data.schedules.find((s) => s.id === id); if (!schedule) return; if (session) { void apiRequest(`/recurring/${id}`, schedulePayload({ ...schedule, ...updates }), session.csrfToken, 'PUT').then(() => refreshAccount(session)).then(() => setNotice('Schedule saved')).catch((error) => setNotice(error instanceof Error ? error.message : 'Could not save schedule')); return; } setData((old) => ({ ...old, schedules: old.schedules.map((s) => s.id === id ? { ...s, ...updates } : s) })); setNotice('Schedule saved'); }
-  function deleteSchedule(id: string) { if (session) { void apiRequest(`/recurring/${id}`, {}, session.csrfToken, 'DELETE').then(() => refreshAccount(session)).then(() => { setNotice('Schedule deleted'); if (pathname === `/recurring/${id}`) router.push('/recurring'); }).catch(() => setNotice('Could not delete schedule')); return; } setData((old) => ({ ...old, schedules: old.schedules.filter((s) => s.id !== id) })); setNotice('Schedule deleted'); if (pathname === `/recurring/${id}`) router.push('/recurring'); }
+  function deleteSchedule(id: string) { if (session) { void apiRequest(`/recurring/${id}`, {}, session.csrfToken, 'DELETE').then(() => refreshAccount(session)).then(() => { setNotice('Schedule deleted'); if (pathname === `/recurring/${id}`) navigate('/recurring'); }).catch(() => setNotice('Could not delete schedule')); return; } setData((old) => ({ ...old, schedules: old.schedules.filter((s) => s.id !== id) })); setNotice('Schedule deleted'); if (pathname === `/recurring/${id}`) navigate('/recurring'); }
   async function addSchedule(schedule: Omit<Schedule, 'id'>) {
-    if (session) { await apiRequest('/recurring', schedulePayload(schedule), session.csrfToken); try { await refreshAccount(session); } catch { setAccountError('Your schedule was saved, but your account could not be refreshed. Reload to continue.'); return; } setNotice('Schedule created'); router.push('/recurring'); return; }
+    if (session) { await apiRequest('/recurring', schedulePayload(schedule), session.csrfToken); try { await refreshAccount(session); } catch { setAccountError('Your schedule was saved, but your account could not be refreshed. Reload to continue.'); return; } setNotice('Schedule created'); navigate('/recurring'); return; }
     setData((old) => ({ ...old, schedules: [...old.schedules, { ...schedule, id: `r${Date.now()}` }] }));
-    setNotice('Schedule created'); router.push('/recurring');
+    setNotice('Schedule created'); navigate('/recurring');
   }
   async function addCategory(name: string, kind: Kind, parent: string, icon: string, color: string) {
     if (!name.trim()) return;
-    if (session) { const parentId = parent ? data.categories.find((c) => c.kind === kind && c.name === parent)?.id : null; if (parent && !parentId) throw new Error('Parent category is no longer available'); await apiRequest('/categories', { name, kind, parentId, icon, color }, session.csrfToken); try { await refreshAccount(session); } catch { setAccountError('Your category was saved, but your account could not be refreshed. Reload to continue.'); return; } setNotice('Category added'); router.push('/categories'); return; }
+    if (session) { const parentId = parent ? data.categories.find((c) => c.kind === kind && c.name === parent)?.id : null; if (parent && !parentId) throw new Error('Parent category is no longer available'); await apiRequest('/categories', { name, kind, parentId, icon, color }, session.csrfToken); try { await refreshAccount(session); } catch { setAccountError('Your category was saved, but your account could not be refreshed. Reload to continue.'); return; } setNotice('Category added'); navigate('/categories'); return; }
     setData((old) => ({ ...old, categories: [...old.categories, { id: `c${Date.now()}`, name: name.trim(), kind, icon, color, ...(parent ? { parent } : {}) }] }));
-    setNotice('Category added'); router.push('/categories');
+    setNotice('Category added'); navigate('/categories');
   }
   async function updateCategory(id: string, name: string, kind: Kind, parent: string, icon: string, color: string) {
-    if (session) { const parentId = parent ? data.categories.find((c) => c.kind === kind && c.name === parent)?.id : null; if (parent && !parentId) throw new Error('Parent category is no longer available'); await apiRequest(`/categories/${id}`, { name, kind, parentId, icon, color }, session.csrfToken, 'PUT'); try { await refreshAccount(session); } catch { setAccountError('Your category was saved, but your account could not be refreshed. Reload to continue.'); return; } setNotice('Category updated'); router.push('/categories'); return; }
+    if (session) { const parentId = parent ? data.categories.find((c) => c.kind === kind && c.name === parent)?.id : null; if (parent && !parentId) throw new Error('Parent category is no longer available'); await apiRequest(`/categories/${id}`, { name, kind, parentId, icon, color }, session.csrfToken, 'PUT'); try { await refreshAccount(session); } catch { setAccountError('Your category was saved, but your account could not be refreshed. Reload to continue.'); return; } setNotice('Category updated'); navigate('/categories'); return; }
     setData((old) => {
       const original = old.categories.find((c) => c.id === id);
       if (!original) return old;
@@ -636,7 +666,7 @@ export default function PocketBuddyApp() {
         budgets: original.kind === 'expense' ? old.budgets.map((b) => b.category === original.name ? { ...b, category: updatedName } : b) : old.budgets,
       };
     });
-    setNotice('Category updated'); router.push('/categories');
+    setNotice('Category updated'); navigate('/categories');
   }
   function exportCSV(ordered?: Transaction[]) {
     const rows = [['Date', 'Name', 'Kind', 'Category', 'Amount', 'Note'], ...(ordered || filteredTransactions).map((t) => [t.date, t.name, t.kind, t.category, String(t.amount), t.note ?? ''])];
@@ -650,22 +680,22 @@ export default function PocketBuddyApp() {
   }), [data.transactions, data.categories, search, kindFilter, categoryFilter, dateFrom, dateTo]);
 
   async function signOut() {
-    if (!session) { router.replace('/sign-in'); return; }
+    if (!session) { replaceRoute('/sign-in'); return; }
     try {
       await apiRequest('/auth/logout', {}, session.csrfToken);
       setSession(null);
       setNotice('Signed out');
-      router.replace('/sign-in');
+      replaceRoute('/sign-in');
     } catch { setNotice('Could not sign out. Try again.'); }
   }
 
-  if (authPage) return <div className="auth-screen"><Link className="wordmark" href="/"><BrandMark/>pocket buddy</Link><AuthContent key={pathname} path={pathname} go={router.push} goBack={goBack} notify={setNotice} setSession={setSession}/>{notice && <div className="toast">{notice}</div>}{discardDialog}</div>;
+  if (authPage) return <div className="auth-screen"><RouteProgress active={routePending}/><Link className="wordmark" href="/"><BrandMark/>pocket buddy</Link><AuthContent key={pathname} path={pathname} go={navigate} goBack={goBack} notify={setNotice} setSession={setSession}/>{notice && <div className="toast">{notice}</div>}{discardDialog}</div>;
 
   if (sessionError) return <div className="auth-screen"><Card><p role="alert">{sessionError}</p><Button onClick={() => void restoreSession()}>Retry</Button></Card></div>;
   if (!sessionReady || (session && (accountLoading || (!accountError && dataMode !== 'account'))) || (!session && dataMode !== 'demo')) return <div className="auth-screen">Loading your account…</div>;
   if (session && accountError) return <div className="auth-screen"><Card><p role="alert">{accountError}</p><Button onClick={signOut}>Sign out</Button>{notice && <p role="alert">{notice}</p>}</Card></div>;
   const navItem = nav.find((item) => item.href === pathname || (item.href !== '/' && pathname.startsWith(item.href)));
-  return <div className="app-frame">{discardDialog}
+  return <div className="app-frame"><RouteProgress active={routePending}/>{discardDialog}
     <aside className="app-sidebar">
       <Link className="wordmark" href="/"><BrandMark/>pocket buddy</Link>
       <nav aria-label="Main navigation">{nav.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={navItem?.href === href ? 'active' : ''}><Icon size={17}/><span>{label}</span></Link>)}</nav>
@@ -692,9 +722,9 @@ export default function PocketBuddyApp() {
         {parts[0] === 'recurring' && parts[1] && parts[1] !== 'new' && parts[1] !== 'review' && <ScheduleDetails categories={data.categories} currency={data.currency} goBack={goBack} schedule={data.schedules.find((s) => s.id === parts[1])} onDelete={() => deleteSchedule(parts[1])} onSave={(updates) => saveSchedule(parts[1], updates)}/ >}
         {pathname === '/categories' && <CategoriesPage categories={data.categories} budgets={data.budgets} transactions={data.transactions} deletedTransactions={data.deleted} schedules={data.schedules} remove={removeCategory}/ >}
         {pathname === '/categories/new' && <CategoryForm categories={data.categories} add={addCategory}/>}
-        {parts[0] === 'categories' && parts[1] && parts[1] !== 'new' && !parts[2] && ready && (data.categories.find((c) => c.id === parts[1]) ? <CategoryForm key={parts[1]} categories={data.categories} editing={data.categories.find((c) => c.id === parts[1])} deleteContext={{ budgets: data.budgets, transactions: data.transactions, deletedTransactions: data.deleted, schedules: data.schedules, remove: (id) => { void removeCategory(id); if (!session) router.push('/categories'); } }} add={(name, kind, parent, icon, color) => updateCategory(parts[1], name, kind, parent, icon, color)}/> : <Card><Empty title="Category not found" detail="It may have been removed." action={<Button onClick={() => goBack('/categories')}>Back</Button>}/></Card>)}
+        {parts[0] === 'categories' && parts[1] && parts[1] !== 'new' && !parts[2] && ready && (data.categories.find((c) => c.id === parts[1]) ? <CategoryForm key={parts[1]} categories={data.categories} editing={data.categories.find((c) => c.id === parts[1])} deleteContext={{ budgets: data.budgets, transactions: data.transactions, deletedTransactions: data.deleted, schedules: data.schedules, remove: (id) => { void removeCategory(id); if (!session) navigate('/categories'); } }} add={(name, kind, parent, icon, color) => updateCategory(parts[1], name, kind, parent, icon, color)}/> : <Card><Empty title="Category not found" detail="It may have been removed." action={<Button onClick={() => goBack('/categories')}>Back</Button>}/></Card>)}
         {pathname === '/settings' && <SettingsPage data={data} account={Boolean(session)} save={async (updates) => { if (session) { const next = { ...data, ...updates }; try { await apiRequest('/settings', { currency: next.currency, locale: next.language === 'id' ? 'id-ID' : 'en', openingBalance: next.openingBalance, transactionEntryDefault: next.transactionEntryDefault ?? 'manual' }, session.csrfToken, 'PUT'); if (sessionRef.current?.user.id === session.user.id) setData(next); setNotice('Settings saved'); } catch { setNotice('Could not save settings'); } return; } setData((old) => ({ ...old, ...updates })); setNotice('Settings saved'); }}/ >}
-        {pathname === '/settings/account' && <AccountSettings session={session} onSignOut={signOut} onDelete={async (password) => { if (!session) return; await apiRequest('/auth/account', { password }, session.csrfToken, 'DELETE'); setSession(null); setNotice('Account deleted'); router.push('/sign-in'); }}/>}
+        {pathname === '/settings/account' && <AccountSettings session={session} onSignOut={signOut} onDelete={async (password) => { if (!session) return; await apiRequest('/auth/account', { password }, session.csrfToken, 'DELETE'); setSession(null); setNotice('Account deleted'); navigate('/sign-in'); }}/>}
         {!['/', '/transactions', '/transactions/new', '/transactions/recently-deleted', '/budgets', '/budgets/new', '/recurring', '/recurring/new', '/categories', '/categories/new', '/settings', '/settings/account'].includes(pathname) && !(parts[0] === 'transactions' && parts[1] && !parts[2]) && !(parts[0] === 'budgets' && parts[1]) && !(parts[0] === 'recurring' && parts[1]) && !(parts[0] === 'categories' && parts[1] && !parts[2]) && <Card><Empty title="That page is still on the map" detail="Head back to your overview." action={<Button href="/" variant="primary">Go to overview</Button>}/></Card>}
       </main>
     </div>
