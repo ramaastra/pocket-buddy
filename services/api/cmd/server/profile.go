@@ -12,6 +12,25 @@ import (
 func registerProfileRoutes(r *gin.Engine, db *gorm.DB, origin string) {
 	g := r.Group("/api")
 	g.Use(loadSession(db))
+	g.PUT("/profile", requireOrigin(origin), requireCSRF(), func(c *gin.Context) {
+		var input struct {
+			Name string `json:"name"`
+		}
+		if c.ShouldBindJSON(&input) != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Enter a valid name"})
+			return
+		}
+		input.Name = strings.TrimSpace(input.Name)
+		if len([]rune(input.Name)) == 0 || len([]rune(input.Name)) > 80 || strings.ContainsAny(input.Name, "\r\n") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Enter a name of 1 to 80 characters"})
+			return
+		}
+		if err := db.Table("users").Where("id = ?", c.MustGet("auth").(authContext).UserID).Update("name", input.Name).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not save name"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"name": input.Name})
+	})
 	g.GET("/settings", func(c *gin.Context) {
 		var user authUser
 		if err := db.Table("users").Where("id = ?", c.MustGet("auth").(authContext).UserID).First(&user).Error; err != nil {

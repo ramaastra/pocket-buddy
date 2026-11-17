@@ -23,6 +23,7 @@ import (
 type User struct {
 	ID             string `gorm:"type:uuid;primaryKey" json:"id"`
 	Email          string `gorm:"uniqueIndex;not null" json:"email"`
+	Name           string `gorm:"not null;default:''" json:"name"`
 	Currency       string `gorm:"default:IDR" json:"currency"`
 	Locale         string `gorm:"default:id-ID" json:"locale"`
 	OpeningBalance int64  `gorm:"default:0" json:"openingBalance"`

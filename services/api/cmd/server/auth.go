@@ -36,6 +36,7 @@ type authSession struct {
 type authUser struct {
 	ID                      string     `gorm:"type:uuid;primaryKey"`
 	Email                   string     `gorm:"not null"`
+	Name                    string     `gorm:"not null;default:''"`
 	EmailVerifiedAt         *time.Time `gorm:"column:email_verified_at"`
 	PasswordHash            string     `gorm:"column:password_hash;not null"`
 	Currency                string     `gorm:"not null"`
@@ -47,6 +48,7 @@ type authUser struct {
 type authContext struct {
 	UserID string
 	Email  string
+	Name   string
 	CSRF   string
 }
 
@@ -64,7 +66,7 @@ func registerAuthRoutes(r *gin.Engine, db *gorm.DB, origin string, secureCookies
 	auth.Use(loadSession(db))
 	auth.GET("/auth/me", func(c *gin.Context) {
 		identity := c.MustGet("auth").(authContext)
-		c.JSON(http.StatusOK, gin.H{"user": gin.H{"id": identity.UserID, "email": identity.Email}, "csrfToken": identity.CSRF})
+		c.JSON(http.StatusOK, gin.H{"user": gin.H{"id": identity.UserID, "email": identity.Email, "name": identity.Name}, "csrfToken": identity.CSRF})
 	})
 	auth.POST("/auth/logout", requireOrigin(origin), requireCSRF(), logout(db, secureCookies))
 	auth.DELETE("/auth/account", requireOrigin(origin), requireCSRF(), deleteAccount(db, secureCookies))
@@ -83,18 +85,24 @@ func registerAccount(db *gorm.DB, origin string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
 			Email string `json:"email" binding:"required"`
+			Name  string `json:"name"`
 		}
 		if c.ShouldBindJSON(&input) != nil {
 			c.JSON(400, gin.H{"error": "Enter a valid email address"})
 			return
 		}
 		input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+		input.Name = strings.TrimSpace(input.Name)
+		if len([]rune(input.Name)) == 0 || len([]rune(input.Name)) > 80 || strings.ContainsAny(input.Name, "\r\n") {
+			c.JSON(400, gin.H{"error": "Enter a name of 1 to 80 characters"})
+			return
+		}
 		address, err := mail.ParseAddress(input.Email)
 		if len(input.Email) > 254 || err != nil || address.Address != input.Email || strings.ContainsAny(input.Email, "\r\n") {
 			c.JSON(400, gin.H{"error": "Enter a valid email address"})
 			return
 		}
-		user := authUser{ID: uuid.NewString(), Email: input.Email, PasswordHash: pendingPasswordHash, Currency: "IDR", Locale: "en", Opening: 0, TransactionEntryDefault: "manual"}
+		user := authUser{ID: uuid.NewString(), Email: input.Email, Name: input.Name, PasswordHash: pendingPasswordHash, Currency: "IDR", Locale: "en", Opening: 0, TransactionEntryDefault: "manual"}
 		result := db.Table("users").Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "email"}}, DoNothing: true}).Create(&user)
 		if result.Error != nil {
 			c.JSON(500, gin.H{"error": "Could not create account"})
@@ -143,7 +151,7 @@ func login(db *gorm.DB, secure bool, origin string) gin.HandlerFunc {
 			c.JSON(500, gin.H{"error": "Could not start session"})
 			return
 		}
-		c.JSON(200, gin.H{"user": gin.H{"id": user.ID, "email": user.Email}, "csrfToken": csrf})
+		c.JSON(200, gin.H{"user": gin.H{"id": user.ID, "email": user.Email, "name": user.Name}, "csrfToken": csrf})
 	}
 }
 
@@ -157,17 +165,18 @@ func loadSession(db *gorm.DB) gin.HandlerFunc {
 		var result struct {
 			UserID    string
 			Email     string
+			Name      string
 			TokenHash string
 			CSRFHash  string
 			ExpiresAt time.Time
 		}
-		err = db.Table("sessions").Select("sessions.user_id, users.email, sessions.token_hash, sessions.csrf_hash, sessions.expires_at").Joins("JOIN users ON users.id = sessions.user_id").Where("sessions.token_hash = ? AND sessions.expires_at > ? AND users.deleted_at IS NULL AND users.email_verified_at IS NOT NULL", secretHash(rawToken), time.Now().UTC()).Take(&result).Error
+		err = db.Table("sessions").Select("sessions.user_id, users.email, users.name, sessions.token_hash, sessions.csrf_hash, sessions.expires_at").Joins("JOIN users ON users.id = sessions.user_id").Where("sessions.token_hash = ? AND sessions.expires_at > ? AND users.deleted_at IS NULL AND users.email_verified_at IS NOT NULL", secretHash(rawToken), time.Now().UTC()).Take(&result).Error
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Sign in required"})
 			return
 		}
 		csrf, _ := c.Cookie(csrfCookieName)
-		c.Set("auth", authContext{UserID: result.UserID, Email: result.Email, CSRF: csrf})
+		c.Set("auth", authContext{UserID: result.UserID, Email: result.Email, Name: result.Name, CSRF: csrf})
 		c.Set("csrf_hash", result.CSRFHash)
 		c.Next()
 	}
