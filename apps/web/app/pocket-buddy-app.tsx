@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ApiError, apiRequest, apiUpload } from './api';
 import { withBudgetSpending } from './budget-spending';
 import { avatarInitial, type Session } from './session';
+import { getUILanguage, translateUI, useLocalizedDocument, type Language } from './i18n';
 import { usePathname, useRouter } from 'next/navigation';
 import { Pagination as MantinePagination, Paper, UnstyledButton, Modal, Popover, Select } from '@mantine/core';
 import paginationStyles from './pagination.module.css';
@@ -199,7 +200,7 @@ function transactionInput({ name, category, kind, amount, date, note, merchant }
   return { name, category, kind, amount, date, note, merchant };
 }
 function prettyDate(value: string) {
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${value}T12:00:00`));
+  return new Intl.DateTimeFormat(getUILanguage() === 'id' ? 'id-ID' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${value}T12:00:00`));
 }
 function getTitle(path: string) {
   if (path === '/') return 'Overview';
@@ -249,8 +250,8 @@ function SelectInput({ value, onChange, options, ariaLabel, required = false, cl
       onChange(next === emptyValue || next === null ? '' : next);
       if (!keyboardSelection.current) requestAnimationFrame(() => inputRef.current?.blur());
     }}
-    data={options.map((option) => ({ value: option.value || emptyValue, label: option.label }))}
-    placeholder="Search options" searchable nothingFoundMessage="No options match" allowDeselect={false}
+    data={options.map((option) => ({ value: option.value || emptyValue, label: translateUI(option.label) }))}
+    placeholder={translateUI('Search options')} searchable nothingFoundMessage={translateUI('No options match')} allowDeselect={false}
     leftSection={leadingIcon} rightSection={<ChevronDown size={15} aria-hidden="true"/>}
     comboboxProps={{ position: 'bottom', middlewares: { flip: true, shift: { padding: 12 } }, withinPortal: true }}
     classNames={{ input: 'select-trigger', dropdown: 'select-menu', option: 'select-option' }}
@@ -259,14 +260,14 @@ function SelectInput({ value, onChange, options, ariaLabel, required = false, cl
 function DatePicker({ value, onChange, ariaLabel, compact = false, required = false, mode = 'date', maxValue }: { value: string; onChange: (value: string) => void; ariaLabel: string; compact?: boolean; required?: boolean; mode?: 'date' | 'month'; maxValue?: string }) {
   const [open, setOpen] = useState(false);
   const selected = value ? new Date(`${value}${mode === 'month' ? '-01' : ''}T12:00:00`) : null;
-  const displayValue = selected ? new Intl.DateTimeFormat('en', mode === 'month' ? { month: 'long', year: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' }).format(selected) : mode === 'month' ? 'Choose month' : 'Choose date';
+  const displayValue = selected ? new Intl.DateTimeFormat(getUILanguage() === 'id' ? 'id-ID' : 'en', mode === 'month' ? { month: 'long', year: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' }).format(selected) : mode === 'month' ? 'Choose month' : 'Choose date';
   const today = new Date();
   const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const pickerClasses = { calendarHeader: 'date-calendar-header', calendarHeaderControl: 'date-calendar-control', calendarHeaderLevel: 'date-calendar-level', day: 'date-calendar-day', weekday: 'date-calendar-weekday', monthsListControl: 'date-calendar-day', yearsListControl: 'date-calendar-day' };
   return <div className={`date-picker${compact ? ' compact' : ''}${mode === 'month' ? ' month-mode' : ''}`}><Popover opened={open} onChange={setOpen} position="bottom" offset={7} middlewares={{ flip: true, shift: { padding: 12 } }} withinPortal>
-      <Popover.Target><button type="button" className="date-picker-trigger" aria-label={ariaLabel} aria-expanded={open} aria-haspopup="dialog" aria-required={required} onClick={() => setOpen((current) => !current)} onKeyDown={(event) => { if (event.key === 'Escape') setOpen(false); }}><span>{displayValue}</span>{mode === 'date' && <CalendarDays size={15}/>}</button></Popover.Target>
+    <Popover.Target><button type="button" className="date-picker-trigger" aria-label={ariaLabel} aria-expanded={open} aria-haspopup="dialog" aria-required={required} onClick={() => setOpen((current) => !current)} onKeyDown={(event) => { if (event.key === 'Escape') setOpen(false); }}><span>{displayValue}</span>{mode === 'date' && <CalendarDays size={15}/>}</button></Popover.Target>
       <Popover.Dropdown className={`date-picker-popover${mode === 'month' ? ' month-picker-popover' : ''}`} aria-label={mode === 'month' ? 'Choose a month' : 'Choose a date'}>
-        {mode === 'month' ? <MonthPicker key={`${open}-${value}`} value={value ? `${value}-01` : null} defaultDate={value ? `${value}-01` : undefined} maxDate={maxValue ? `${maxValue}-01` : undefined} onChange={(next) => { if (next) { onChange(next.slice(0, 7)); setOpen(false); } }} classNames={pickerClasses}/> : <><MantineDatePicker key={`${open}-${value}`} value={value || null} defaultDate={value || undefined} onChange={(next) => { if (next) { onChange(next); setOpen(false); } }} classNames={pickerClasses} getDayProps={(date) => ({ 'aria-label': new Intl.DateTimeFormat('en', { dateStyle: 'full' }).format(new Date(`${date}T12:00:00`)) })}/><div className="date-picker-footer"><button type="button" onClick={() => { onChange(todayIso); setOpen(false); }}>Today</button>{value && !required && <button type="button" onClick={() => { onChange(''); setOpen(false); }}>Clear</button>}</div></>}
+        {mode === 'month' ? <MonthPicker key={`${open}-${value}`} value={value ? `${value}-01` : null} defaultDate={value ? `${value}-01` : undefined} maxDate={maxValue ? `${maxValue}-01` : undefined} onChange={(next) => { if (next) { onChange(next.slice(0, 7)); setOpen(false); } }} classNames={pickerClasses}/> : <><MantineDatePicker key={`${open}-${value}`} value={value || null} defaultDate={value || undefined} onChange={(next) => { if (next) { onChange(next); setOpen(false); } }} classNames={pickerClasses} getDayProps={(date) => ({ 'aria-label': new Intl.DateTimeFormat(getUILanguage() === 'id' ? 'id-ID' : 'en', { dateStyle: 'full' }).format(new Date(`${date}T12:00:00`)) })}/><div className="date-picker-footer"><button type="button" onClick={() => { onChange(todayIso); setOpen(false); }}>Today</button>{value && !required && <button type="button" onClick={() => { onChange(''); setOpen(false); }}>Clear</button>}</div></>}
       </Popover.Dropdown>
   </Popover></div>;
 }
@@ -373,7 +374,7 @@ function AccountLoading() {
   }, []);
   return <div className="account-loading-screen" role="status" aria-label="Loading your account">
     <div className="account-loading-mark"><BrandMark animateSparkles sparklePositions={sparklePositions}/></div>
-    <p className="account-loading-copy" aria-hidden="true">Getting things ready</p>
+    <p className="account-loading-copy" aria-hidden="true">Getting things ready…</p>
   </div>;
 }
 
@@ -485,6 +486,8 @@ export default function PocketBuddyApp() {
   const [accountLoading, setAccountLoading] = useState(false);
   const [dataMode, setDataMode] = useState<'demo' | 'account' | null>(null);
   const data = useMemo(() => dataMode === 'demo' ? { ...storedData, budgets: withBudgetSpending(storedData.budgets, storedData.transactions, storedData.categories, new Date()) } : storedData, [storedData, dataMode]);
+  const language: Language = data.language === 'id' ? 'id' : 'en';
+  useLocalizedDocument(language);
   const [accountError, setAccountError] = useState('');
   const [sessionError, setSessionError] = useState('');
   const restoreSession = useCallback(async () => {
@@ -694,7 +697,8 @@ export default function PocketBuddyApp() {
     setNotice('Category updated');
   }
   function exportCSV(ordered?: Transaction[]) {
-    const rows = [['Date', 'Name', 'Kind', 'Category', 'Amount', 'Note'], ...(ordered || filteredTransactions).map((t) => [t.date, t.name, t.kind, t.category, String(t.amount), t.note ?? ''])];
+    const headers = data.language === 'id' ? ['Tanggal', 'Nama', 'Jenis', 'Kategori', 'Jumlah', 'Catatan'] : ['Date', 'Name', 'Kind', 'Category', 'Amount', 'Note'];
+    const rows = [headers, ...(ordered || filteredTransactions).map((t) => [t.date, t.name, t.kind, t.category, String(t.amount), t.note ?? ''])];
     const csv = rows.map((row) => row.map((cell) => { const safe = /^[\s]*[=+@-]/.test(cell) ? `'${cell}` : cell; return `"${safe.replaceAll('"', '""')}"`; }).join(',')).join('\n');
     const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); link.download = 'pocket-buddy-transactions.csv'; link.click(); URL.revokeObjectURL(link.href); setNotice('CSV downloaded');
   }
@@ -802,7 +806,7 @@ function Dashboard({ data, cash, income, expenses, month, maxMonth, onMonthChang
   const pending = pendingSchedules(data.occurrences ?? data.schedules);
   const previewBudgets = [...data.budgets].sort((a, b) => b.spent / b.limit - a.spent / a.limit).slice(0, 3);
   const monthDate = new Date(`${month}-01T12:00:00`);
-  const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(monthDate);
+  const monthLabel = new Intl.DateTimeFormat(getUILanguage() === 'id' ? 'id-ID' : 'en-US', { month: 'long', year: 'numeric' }).format(monthDate);
   function shiftMonth(offset: number) {
     const next = new Date(monthDate.getFullYear(), monthDate.getMonth() + offset, 1);
     const value = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
@@ -1132,7 +1136,7 @@ function BudgetDetails({ budget, budgets, categories, currency, onSave, onDelete
   }
   const expenseCategories = categories.filter((item) => item.kind === 'expense');
   return <><div className="detail-layout detail-full-width"><Card className="detail-card budget-detail">
-    <span className="section-kicker">{budget.period.toUpperCase()} CATEGORY BUDGET</span><h2>{budget.category}</h2>
+    <span className="section-kicker">{translateUI(`${budget.period.toUpperCase()} CATEGORY BUDGET`)}</span><h2>{budget.category}</h2>
     <div className="budget-big-progress"><i><em style={{ width: `${pct}%` }}/></i><small>{fmt(Math.max(0, budget.limit - budget.spent), currency)} left of {fmt(budget.limit, currency)}</small><strong>{pct}%</strong></div>
     <form onSubmit={submit}>
       <Field label="Spending limit" required><AmountInput value={limit} onChange={setLimit} currency={currency} ariaLabel="Spending limit"/></Field>
@@ -1303,7 +1307,7 @@ function AccountSettings({ session, onSaveName, onSignOut, onDelete }: { session
         </form>
       </Modal.Content>
     </Modal.Root>
-    <Card className="account-settings"><div className="card-heading"><div><span className="section-kicker">SIGN-IN &amp; SAFETY</span><h2>Account security</h2></div><ShieldCheck size={18}/></div><p className="settings-description">{session ? 'Your transactions, categories, budgets and money settings are saved to your account. Recurring transactions are coming soon.' : 'Sign in to manage your account.'}</p><Link href="/forgot-password" className="security-row"><span><strong>Password</strong><small>Reset your password</small></span><ArrowRight size={16}/></Link><div className="account-buttons"><Button onClick={onSignOut}><LogOut size={15}/>{session ? 'Sign out' : 'Sign in'}</Button>{session && <Button onClick={() => setConfirm(true)} variant="danger"><Trash2 size={15}/>Delete account</Button>}</div></Card>
+    <Card className="account-settings"><div className="card-heading"><div><span className="section-kicker">SIGN-IN &amp; SAFETY</span><h2>Account security</h2></div><ShieldCheck size={18}/></div><p className="settings-description">{session ? 'Your transactions, categories, budgets and money settings are saved to your account. Manage scheduled transactions from the Scheduled page.' : 'Sign in to manage your account.'}</p><Link href="/forgot-password" className="security-row"><span><strong>Password</strong><small>Reset your password</small></span><ArrowRight size={16}/></Link><div className="account-buttons"><Button onClick={onSignOut}><LogOut size={15}/>{session ? 'Sign out' : 'Sign in'}</Button>{session && <Button onClick={() => setConfirm(true)} variant="danger"><Trash2 size={15}/>Delete account</Button>}</div></Card>
     <Modal.Root opened={confirm} onClose={() => { if (!busy) { setConfirm(false); setPassword(''); setError(''); } }} unstyled><Modal.Overlay className="radix-dialog-overlay"/><Modal.Content classNames={{ content: "commit-review-dialog" }} transitionProps={{ transition: "fade" }}><div className="commit-review-heading"><Modal.Title className="dialog-title">Delete account</Modal.Title><button type="button" className="icon-button" aria-label="Close confirmation" disabled={busy} onClick={() => setConfirm(false)}><X size={18}/></button></div><form onSubmit={deleteAccount}><p>Access ends immediately. Your account and its saved data will be permanently erased after 30 days.</p><Field label="Password" required><input required type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)}/></Field>{error && <p className="form-error" role="alert">{error}</p>}<div className="form-actions"><Button onClick={() => setConfirm(false)} disabled={busy}>Cancel</Button><Button type="submit" variant="danger" disabled={!password || busy}>{busy ? 'Deleting…' : 'Delete account'}</Button></div></form></Modal.Content></Modal.Root>
   </div>;
 }
