@@ -56,6 +56,9 @@ func main() {
 	if err := runMigrations(dsn); err != nil {
 		log.Fatal(err)
 	}
+	if err := seedDemoAccount(db, os.Getenv("DEMO_ACCOUNT_EMAIL"), os.Getenv("DEMO_ACCOUNT_PASSWORD")); err != nil {
+		log.Fatal("provision demo account: ", err)
+	}
 
 	startTransactionPurge(db)
 	startAccountPurge(db)

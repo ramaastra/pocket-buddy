@@ -26,6 +26,8 @@ services:
       DATABASE_URL: postgres://pocket_buddy:local_dev_only@db:5432/pocket_buddy?sslmode=disable
       WEB_ORIGIN: http://localhost:3000
       MAILPIT_HOST: mailpit
+      DEMO_ACCOUNT_EMAIL: ${DEMO_ACCOUNT_EMAIL:-demo@pocketbuddy.local}
+      DEMO_ACCOUNT_PASSWORD: ${DEMO_ACCOUNT_PASSWORD:-PocketBuddyDemo2026!}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
     ports:
@@ -45,6 +47,8 @@ services:
       - "3000:3000"
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_DEMO_ACCOUNT_EMAIL: ${DEMO_ACCOUNT_EMAIL:-demo@pocketbuddy.local}
+      NEXT_PUBLIC_DEMO_ACCOUNT_PASSWORD: ${DEMO_ACCOUNT_PASSWORD:-PocketBuddyDemo2026!}
     depends_on:
       - api
 volumes:
