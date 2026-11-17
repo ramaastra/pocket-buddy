@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { ApiError, apiRequest, apiUpload } from './api';
 import { withBudgetSpending } from './budget-spending';
+import { avatarInitial, type Session } from './session';
 import { usePathname, useRouter } from 'next/navigation';
 import { Pagination as MantinePagination, Paper, UnstyledButton, Modal, Popover, Select } from '@mantine/core';
 import paginationStyles from './pagination.module.css';
@@ -29,16 +30,6 @@ type ApiOccurrence = { id: string; scheduleId: string; description: string; cate
 type ApiBudget = { id: string; categoryId: string; amount: number; period: 'weekly' | 'monthly'; spent: number };
 const fromApiTransaction = (t: ApiTransaction, categories: ApiCategory[]): Transaction => ({ id: t.id, name: t.description || t.merchant || 'Transaction', category: categories.find((c) => c.id === t.categoryId && c.kind === t.kind)?.name || '', kind: t.kind, amount: t.amount, date: t.date, merchant: t.merchant, note: t.note });
 const emptyAccount: DemoState = { transactions: [], deleted: [], budgets: [], schedules: [], categories: [], openingBalance: 0, currency: 'IDR', language: 'en', transactionEntryDefault: 'manual' };
-
-type Session = { user: { id: string; email: string; name: string }; csrfToken: string };
-
-function avatarInitial(session: Session | null) {
-  if (!session) return 'D';
-  const words = session.user.name.trim().split(/\s+/).filter(Boolean);
-  const initials = words.length > 1 ? [words[0], words[words.length - 1]] : words;
-  const value = initials.map((word) => Array.from(word)[0]).join('');
-  return (value || Array.from(session.user.email)[0] || 'D').toLocaleUpperCase();
-}
 
 function MobileAccountMenu({ session }: { session: Session | null }) {
   const [open, setOpen] = useState(false);
@@ -805,7 +796,7 @@ function pageAction(path: string) {
   return actions[path] ?? null;
 }
 
-function Dashboard({ data, cash, income, expenses, month, maxMonth, onMonthChange, transactions, animateBalance, onBalanceHighlightConsumed, onConfirm, onSkip }: { data: DemoState; cash: number; income: number; expenses: number; month: string; maxMonth: string; onMonthChange: (month: string) => void; transactions: Transaction[]; animateBalance: boolean; onBalanceHighlightConsumed: () => void; onConfirm: (item: Schedule) => void; onSkip: (id: string) => void }) {
+function Dashboard({ data, cash, income, expenses, month, maxMonth, onMonthChange, transactions, animateBalance, onBalanceHighlightConsumed, onConfirm, onSkip }: { data: DemoState; cash: number; income: number; expenses: number; month: string; maxMonth: string; onMonthChange: (month: string) => void; transactions: Transaction[]; animateBalance: boolean; onBalanceHighlightConsumed: () => void; onConfirm: (item: Schedule) => Promise<void>; onSkip: (id: string) => void }) {
   const [runInitialHighlight] = useState(animateBalance && cash !== 0);
   useEffect(() => { if (animateBalance) onBalanceHighlightConsumed(); }, [animateBalance, onBalanceHighlightConsumed]);
   const pending = pendingSchedules(data.occurrences ?? data.schedules);
@@ -825,7 +816,7 @@ function Dashboard({ data, cash, income, expenses, month, maxMonth, onMonthChang
     </section>
     <div className="dashboard-grid"><Card className="recent-card"><div className="card-heading"><div><span className="section-kicker">{monthLabel.toUpperCase()}</span><h2>Transactions</h2></div><Button href="/transactions" variant="quiet">View all</Button></div>{transactions.length ? <TransactionRows categories={data.categories} items={transactions.slice(0, 5)} currency={data.currency} overview/> : <Empty title="No transactions this month" detail="Try another month or add a transaction." action={<Button href="/transactions/new" variant="primary">Add transaction</Button>}/>}</Card>
       <div className="dashboard-side"><Card className="monthly-card"><div className="card-heading"><div><span className="section-kicker">A GENTLE NUDGE</span><h2>Budget check-in <span className="sparkle">✳</span></h2></div><Button href="/budgets" variant="quiet">View all</Button></div>{data.budgets.length ? <BudgetRows categories={data.categories} budgets={previewBudgets} currency={data.currency} overview/> : <Empty title="No budgets yet" detail="Set a limit that feels comfortable." action={<Button href="/budgets/new" variant="primary">Create budget</Button>}/>}</Card>
-      {pending.length ? <Card className="cashflow-card overview-recurring"><div className="cashflow-top"><span className="cashflow-icon"><Repeat2 size={17}/></span><span className="section-kicker">PENDING REVIEW · {pending.length}</span>{pending.length > 1 && <Button href="/recurring/review" variant="quiet">View all</Button>}</div><h3>{pending[0].name} <strong>{fmt(pending[0].amount, data.currency)}</strong></h3><p>{pending[0].kind === 'income' ? 'Income' : 'Expense'} · {pending[0].category || 'Uncategorized'} · {prettyDate(pending[0].nextDate)}</p><div className="overview-recurring-actions"><Button onClick={() => onSkip(pending[0].id)}>Skip</Button><Button variant="primary" href="/recurring/review">Review</Button></div></Card> : <Card className="cashflow-card"><div className="cashflow-top"><span className="cashflow-icon"><BarChart3 size={17}/></span><span className="section-kicker">THIS MONTH</span></div><h3>You’re keeping <strong>{fmt(income - expenses, data.currency)}</strong></h3><p>That’s your income after this month’s spending.</p><div className="cashflow-line"><i style={{ width: `${Math.max(8, Math.min(100, Math.round((Math.max(0, income - expenses) / Math.max(1, income)) * 100)))}%` }}/></div></Card>}</div>
+      {pending.length ? <Card className="cashflow-card overview-recurring"><div className="cashflow-top"><span className="cashflow-icon"><Repeat2 size={17}/></span><span className="section-kicker">PENDING REVIEW · {pending.length}</span>{pending.length > 1 && <Button href="/recurring/review" variant="quiet">View all</Button>}</div><h3>{pending[0].name} <strong>{fmt(pending[0].amount, data.currency)}</strong></h3><p>{pending[0].kind === 'income' ? 'Income' : 'Expense'} · {pending[0].category || 'Uncategorized'} · {prettyDate(pending[0].nextDate)}</p><OccurrenceReviewAction item={pending[0]} currency={data.currency} onConfirm={onConfirm} categories={data.categories}>{(openReview) => <div className="overview-recurring-actions"><Button onClick={() => onSkip(pending[0].id)}>Skip</Button><Button variant="primary" onClick={openReview}>Review</Button></div>}</OccurrenceReviewAction></Card> : <Card className="cashflow-card"><div className="cashflow-top"><span className="cashflow-icon"><BarChart3 size={17}/></span><span className="section-kicker">THIS MONTH</span></div><h3>You’re keeping <strong>{fmt(income - expenses, data.currency)}</strong></h3><p>That’s your income after this month’s spending.</p><div className="cashflow-line"><i style={{ width: `${Math.max(8, Math.min(100, Math.round((Math.max(0, income - expenses) / Math.max(1, income)) * 100)))}%` }}/></div></Card>}</div>
     </div>
   </>;
 }
@@ -1156,15 +1147,19 @@ function pendingSchedules(schedules: Schedule[]) {
   return schedules.filter((schedule) => schedule.pending && !schedule.paused).sort((a, b) => a.nextDate.localeCompare(b.nextDate));
 }
 
-function PendingRow({ item, currency, onSkip, onConfirm, categories }: { item: Schedule; currency: string; onSkip: (id: string) => void; onConfirm: (item: Schedule) => Promise<void>; categories: Category[] }) {
+function OccurrenceReviewAction({ item, currency, onConfirm, categories, children }: { item: Schedule; currency: string; onConfirm: (item: Schedule) => Promise<void>; categories: Category[]; children: (openReview: () => void) => ReactNode }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const valid = draft.name.trim() && Number.isSafeInteger(draft.amount) && draft.amount > 0 && validListDate(draft.nextDate);
-  return <><div className="pending-row"><span className="pending-date">{prettyDate(item.nextDate)}</span><span><strong>{item.name}</strong><small>{item.category || 'Uncategorized'} · {fmt(item.amount, currency)}</small></span><div><Button onClick={() => onSkip(item.id)}>Skip</Button><Button onClick={() => { setDraft(item); setError(''); setEditing(true); }} variant="primary">Review</Button></div></div><Modal.Root opened={editing} onClose={() => setEditing(false)} unstyled><Modal.Overlay className="radix-dialog-overlay"/><Modal.Content classNames={{ content: 'commit-review-dialog' }} transitionProps={{ transition: 'fade' }}><div className="commit-review-heading"><Modal.Title className="dialog-title">Review occurrence</Modal.Title><button type="button" className="icon-button" aria-label="Close" onClick={() => setEditing(false)}><X size={18}/></button></div><p className="helper-note">Changes apply to this occurrence only. To update future occurrences, edit the recurring schedule.</p><div className="form-grid"><Field label="Amount" required><AmountInput value={String(draft.amount)} currency={currency} onChange={(value) => setDraft({ ...draft, amount: Number(value) })} ariaLabel="Occurrence amount"/></Field><Field label="Name" required><input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })}/></Field><Field label="Date" required labelControl={false}><DatePicker ariaLabel="Occurrence date" value={draft.nextDate} onChange={(value) => setDraft({ ...draft, nextDate: value })}/></Field><Field label="Category"><SelectInput value={draft.category} onChange={(value) => setDraft({ ...draft, category: value })} ariaLabel="Category" options={[{ value: '', label: 'Uncategorized' }, ...categories.filter((c) => c.kind === draft.kind).map((c) => ({ value: c.name, label: c.name }))]}/></Field></div>{error && <p className="form-error" role="alert">{error}</p>}<div className="form-actions"><Button disabled={busy} onClick={() => setEditing(false)}>Cancel</Button><Button variant="primary" disabled={!valid || busy} onClick={() => { setBusy(true); setError(''); void onConfirm(draft).then(() => setEditing(false)).catch((failure) => setError(failure instanceof Error ? failure.message : 'Could not save occurrence')).finally(() => setBusy(false)); }}>Add to transactions</Button></div></Modal.Content></Modal.Root></>;
+  const openReview = () => { setDraft(item); setError(''); setEditing(true); };
+  return <>{children(openReview)}<Modal.Root opened={editing} onClose={() => setEditing(false)} unstyled><Modal.Overlay className="radix-dialog-overlay"/><Modal.Content classNames={{ content: 'commit-review-dialog' }} transitionProps={{ transition: 'fade' }}><div className="commit-review-heading"><Modal.Title className="dialog-title">Review occurrence</Modal.Title><button type="button" className="icon-button" aria-label="Close" onClick={() => setEditing(false)}><X size={18}/></button></div><div className="form-grid"><Field label="Amount" required><AmountInput value={String(draft.amount)} currency={currency} onChange={(value) => setDraft({ ...draft, amount: Number(value) })} ariaLabel="Occurrence amount"/></Field><Field label="Name" required><input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })}/></Field><Field label="Date" required labelControl={false}><DatePicker ariaLabel="Occurrence date" value={draft.nextDate} onChange={(value) => setDraft({ ...draft, nextDate: value })}/></Field><Field label="Category"><SelectInput value={draft.category} onChange={(value) => setDraft({ ...draft, category: value })} ariaLabel="Category" options={[{ value: '', label: 'Uncategorized' }, ...categories.filter((c) => c.kind === draft.kind).map((c) => ({ value: c.name, label: c.name }))]}/></Field></div>{error && <p className="form-error" role="alert">{error}</p>}<p className="helper-note occurrence-review-hint">Changes apply to this occurrence only. To update future occurrences, edit the recurring schedule.</p><div className="form-actions"><Button disabled={busy} onClick={() => setEditing(false)}>Cancel</Button><Button variant="primary" disabled={!valid || busy} onClick={() => { setBusy(true); setError(''); void onConfirm(draft).then(() => setEditing(false)).catch((failure) => setError(failure instanceof Error ? failure.message : 'Could not save occurrence')).finally(() => setBusy(false)); }}>Add to transactions</Button></div></Modal.Content></Modal.Root></>;
 }
 
+function PendingRow({ item, currency, onSkip, onConfirm, categories }: { item: Schedule; currency: string; onSkip: (id: string) => void; onConfirm: (item: Schedule) => Promise<void>; categories: Category[] }) {
+  return <OccurrenceReviewAction item={item} currency={currency} onConfirm={onConfirm} categories={categories}>{(openReview) => <div className="pending-row"><span className="pending-date">{prettyDate(item.nextDate)}</span><span><strong>{item.name}</strong><small>{item.category || 'Uncategorized'} · {fmt(item.amount, currency)}</small></span><div><Button onClick={() => onSkip(item.id)}>Skip</Button><Button onClick={openReview} variant="primary">Review</Button></div></div>}</OccurrenceReviewAction>;
+}
 function RecurringReviewPage({ schedules, categories, currency, onSkip, onConfirm }: { schedules: Schedule[]; categories: Category[]; currency: string; onSkip: (id: string) => void; onConfirm: (item: Schedule) => Promise<void> }) {
   const pending = pendingSchedules(schedules);
   return <Card className="ledger-card pending-review-card"><ListDisplay items={pending} label="pending occurrences" searchText={(item) => `${item.name} ${item.category}`} sorts={scheduleSorts} filters={[
@@ -1291,7 +1286,7 @@ function AccountSettings({ session, onSaveName, onSignOut, onDelete }: { session
           {nameError && <p className="form-error" role="alert">{nameError}</p>}
         </form> : <div className="account-profile-name">
           <h2>{session ? session.user.name || 'Your profile' : 'Demo account'}</h2>
-          {session && <button type="button" className="icon-button profile-name-edit" aria-label="Edit profile name" onClick={() => { setName(session.user.name); setNameError(''); setEditingName(true); }}><Pencil size={15} aria-hidden="true"/></button>}
+          {session && <button type="button" className="icon-button profile-name-edit" aria-label="Edit profile name" onClick={() => { setName(session.user.name ?? ''); setNameError(''); setEditingName(true); }}><Pencil size={15} aria-hidden="true"/></button>}
         </div>}
         {(!editingName || mobileViewport) && <p>{session ? session.user.email : 'Browser-local preview'}</p>}
       </div>
