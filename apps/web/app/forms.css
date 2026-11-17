@@ -37,7 +37,7 @@
 .upload-card>.entry-settings-prompt{margin:18px 0 0;color:#9faea3;font-size:12px;text-align:center}.entry-settings-prompt a{padding:0;border:0;background:transparent;color:#c8f29a;font:inherit;text-decoration:underline;text-underline-offset:3px}.entry-settings-prompt a:hover{color:#e0f4c2}
 .dialog-title{margin:0}
 .select-menu{z-index:100;min-width:max(132px,var(--radix-select-trigger-width));max-width:calc(100vw - 24px);max-height:min(280px,50vh);padding:5px;overflow:auto;border:1px solid rgba(225,242,228,.18);border-radius:11px;background:linear-gradient(145deg,rgba(29,43,34,.99),rgba(16,24,19,.99));box-shadow:0 16px 42px rgba(0,0,0,.46);overscroll-behavior:contain}
-.select-option{position:relative;width:100%;min-height:37px;padding:8px 30px 8px 10px;display:flex;align-items:center;border:0;border-radius:7px;background:transparent;color:#dce8de;font:inherit;font-size:13px;text-align:left;white-space:nowrap;cursor:pointer;outline:none}
+.select-option{position:relative;width:100%;min-height:33px;margin-block:2px;padding:6px 30px 6px 10px;display:flex;align-items:center;border:0;border-radius:7px;background:transparent;color:#dce8de;font:inherit;font-size:13px;text-align:left;white-space:nowrap;cursor:pointer;outline:none}
 .select-option[data-highlighted]{background:rgba(225,242,228,.085);color:#fff}
 .select-option[data-state=checked]{background:rgba(191,240,153,.13);color:#d6f3a0;font-weight:650}
 .select-option [data-state=checked]{position:absolute;right:9px;display:inline-flex;align-items:center}

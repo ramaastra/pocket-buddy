@@ -250,7 +250,7 @@ function SelectInput({ value, onChange, options, ariaLabel, required = false, cl
       if (!keyboardSelection.current) requestAnimationFrame(() => inputRef.current?.blur());
     }}
     data={options.map((option) => ({ value: option.value || emptyValue, label: option.label }))}
-    placeholder="Choose an option" searchable={options.length > 10} allowDeselect={false}
+    placeholder="Search options" searchable nothingFoundMessage="No options match" allowDeselect={false}
     leftSection={leadingIcon} rightSection={<ChevronDown size={15} aria-hidden="true"/>}
     comboboxProps={{ position: 'bottom', middlewares: { flip: true, shift: { padding: 12 } }, withinPortal: true }}
     classNames={{ input: 'select-trigger', dropdown: 'select-menu', option: 'select-option' }}
