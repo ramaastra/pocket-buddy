@@ -367,6 +367,25 @@ function RouteProgress({ active }: { active: boolean }) {
   return <div className={`route-progress${active ? ' is-visible' : ''}`} role={active ? 'progressbar' : undefined} aria-label={active ? 'Loading page' : undefined} aria-valuetext={active ? 'Loading' : undefined} aria-hidden={!active}><span /></div>;
 }
 
+function AccountLoading() {
+  const [sparklePositions, setSparklePositions] = useState<[number, number][]>([[23, 30], [58, 7], [59, 57], [5, 31]]);
+  useLayoutEffect(() => {
+    const random = (min: number, max: number) => min + Math.random() * (max - min);
+    const side: [number, number] = Math.random() < .5 ? [random(5, 10), random(18, 46)] : [random(54, 59), random(18, 46)];
+    const positions: [number, number][] = [
+      [random(16, 49), random(18, 47)],
+      [random(10, 54), random(5, 9)],
+      side,
+      [random(10, 54), random(55, 59)],
+    ];
+    setSparklePositions(positions);
+  }, []);
+  return <div className="account-loading-screen" role="status" aria-label="Loading your account">
+    <div className="account-loading-mark"><BrandMark animateSparkles sparklePositions={sparklePositions}/></div>
+    <p className="account-loading-copy" aria-hidden="true">Getting things ready</p>
+  </div>;
+}
+
 export default function PocketBuddyApp() {
   const pathname = usePathname() || '/';
   const router = useRouter();
@@ -707,7 +726,7 @@ export default function PocketBuddyApp() {
   if (authPage) return <div className="auth-screen"><RouteProgress active={routePending}/><Link className="wordmark" href="/"><BrandMark/>pocket buddy</Link><AuthContent key={pathname} path={pathname} go={navigate} goBack={goBack} notify={setNotice} setSession={setSession}/>{notice && <div className="toast">{notice}</div>}{discardDialog}</div>;
 
   if (sessionError) return <div className="auth-screen"><Card><p role="alert">{sessionError}</p><Button onClick={() => void restoreSession()}>Retry</Button></Card></div>;
-  if (!sessionReady || (session && (accountLoading || (!accountError && dataMode !== 'account'))) || (!session && dataMode !== 'demo')) return <div className="auth-screen">Loading your account…</div>;
+  if (!sessionReady || (session && (accountLoading || (!accountError && dataMode !== 'account'))) || (!session && dataMode !== 'demo')) return <AccountLoading/>;
   if (session && accountError) return <div className="auth-screen"><Card><p role="alert">{accountError}</p><Button onClick={signOut}>Sign out</Button>{notice && <p role="alert">{notice}</p>}</Card></div>;
   const navItem = nav.find((item) => item.href === pathname || (item.href !== '/' && pathname.startsWith(item.href)));
   return <div className="app-frame"><RouteProgress active={routePending}/>{discardDialog}
@@ -759,7 +778,22 @@ function PageHint({ path }: { path: string }) {
   return <><button className="scan-help-trigger page-title-hint" type="button" aria-label={`More about ${path === '/recurring' ? 'recurring schedules' : 'budgets'}`} onClick={() => setOpen(true)}><CircleHelp size={18}/></button><Modal.Root opened={open} onClose={() => setOpen(false)} unstyled><Modal.Overlay className="radix-dialog-overlay"/><Modal.Content classNames={{ content: "scan-help-dialog page-hint-dialog" }} transitionProps={{ transition: "fade" }}><div className="scan-help-heading"><Modal.Title className="dialog-title">{path === '/recurring' ? 'How recurring works' : 'About budgets'}</Modal.Title><button className="icon-button" type="button" aria-label="Close hint" autoFocus onClick={() => setOpen(false)}><X size={17}/></button></div><p className="page-hint-copy">{hint}</p></Modal.Content></Modal.Root></>;
 }
 
-function BrandMark() { return <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 64 64"><path fill="#a994f5" d="M9 17c0-3 2-5 5-5h36c3 0 5 2 5 5v31c0 3-2 5-5 5H14c-3 0-5-2-5-5z"/><path fill="#9078dc" d="M35 12h15c3 0 5 2 5 5v31c0 3-2 5-5 5H35z"/><path fill="#c4b2ff" d="M14 12h1v41h-1c-3 0-5-2-5-5V17c0-3 2-5 5-5z"/><path fill="#c7f478" d="M31 12h4v41h-4z"/><path fill="#80dfd0" d="M42 27h13c3 0 5 2 5 5v5c0 3-2 5-5 5H42z"/><circle cx="50" cy="34" r="2.4" fill="#31443a"/></svg></span>; }
+function BrandMark({ animateSparkles = false, sparklePositions }: { animateSparkles?: boolean; sparklePositions?: [number, number][] }) {
+  return <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 64 64">
+    <path fill="#a994f5" d="M9 17c0-3 2-5 5-5h36c3 0 5 2 5 5v31c0 3-2 5-5 5H14c-3 0-5-2-5-5z"/>
+    <path fill="#9078dc" d="M35 12h15c3 0 5 2 5 5v31c0 3-2 5-5 5H35z"/>
+    <path fill="#c4b2ff" d="M14 12h1v41h-1c-3 0-5-2-5-5V17c0-3 2-5 5-5z"/>
+    <path fill="#c7f478" d="M31 12h4v41h-4z"/>
+    <path fill="#80dfd0" d="M42 27h13c3 0 5 2 5 5v5c0 3-2 5-5 5H42z"/>
+    <circle cx="50" cy="34" r="2.4" fill="#31443a"/>
+    {animateSparkles && <g className="brand-sparkles">
+      <g className="brand-sparkle brand-sparkle-large" transform={`translate(${sparklePositions?.[0][0]} ${sparklePositions?.[0][1]}) scale(.78)`}><path className="brand-sparkle-shape" d="M0-7C.9-2.1 2.1-.9 7 0 2.1.9.9 2.1 0 7-.9 2.1-2.1.9-7 0-2.1-.9-.9-2.1 0-7Z" fill="#eaffbd"/></g>
+      <g className="brand-sparkle brand-sparkle-medium" transform={`translate(${sparklePositions?.[1][0]} ${sparklePositions?.[1][1]}) scale(.78)`}><path className="brand-sparkle-shape" d="M0-5.8C.8-1.75 1.75-.8 5.8 0 1.75.8.8 1.75 0 5.8-.8 1.75-1.75.8-5.8 0-1.75-.8-.8-1.75 0-5.8Z" fill="#c5fff0"/></g>
+      <g className="brand-sparkle brand-sparkle-small" transform={`translate(${sparklePositions?.[2][0]} ${sparklePositions?.[2][1]}) scale(.78)`}><path className="brand-sparkle-shape" d="M0-4.8C.66-1.45 1.45-.66 4.8 0 1.45.66.66 1.45 0 4.8-.66 1.45-1.45.66-4.8 0-1.45-.66-.66-1.45 0-4.8Z" fill="#c8f29a"/></g>
+      <g className="brand-sparkle brand-sparkle-medium" transform={`translate(${sparklePositions?.[3][0]} ${sparklePositions?.[3][1]}) scale(.78)`}><path className="brand-sparkle-shape" d="M0-5.2C.72-1.55 1.55-.72 5.2 0 1.55.72.72 1.55 0 5.2-.72 1.55-1.55.72-5.2 0-1.55-.72-.72-1.55 0-5.2Z" fill="#f3fff9"/></g>
+    </g>}
+  </svg></span>;
+}
 function pageAction(path: string) {
   const actions: Record<string, ReactNode> = {
     '/': <Button href="/transactions/new" variant="primary"><Plus size={17}/>Add transaction</Button>,
