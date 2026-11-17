@@ -32,7 +32,7 @@ func registerProfileRoutes(r *gin.Engine, db *gorm.DB, origin string) {
 			return
 		}
 		input.Currency = strings.TrimSpace(input.Currency)
-		if input.Currency != "IDR" || (input.Locale != "en" && input.Locale != "id-ID") || (input.TransactionEntryDefault != "manual" && input.TransactionEntryDefault != "scan") {
+		if !supportedCurrency(input.Currency) || (input.Locale != "en" && input.Locale != "id-ID") || (input.TransactionEntryDefault != "manual" && input.TransactionEntryDefault != "scan") {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid currency, locale or transaction entry default"})
 			return
 		}
@@ -43,4 +43,13 @@ func registerProfileRoutes(r *gin.Engine, db *gorm.DB, origin string) {
 		}
 		c.JSON(http.StatusOK, gin.H{"currency": input.Currency, "locale": input.Locale, "openingBalance": *input.OpeningBalance, "transactionEntryDefault": input.TransactionEntryDefault})
 	})
+}
+
+func supportedCurrency(currency string) bool {
+	switch currency {
+	case "IDR", "USD", "SGD", "AUD":
+		return true
+	default:
+		return false
+	}
 }

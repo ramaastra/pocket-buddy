@@ -69,7 +69,10 @@ func TestSettingsWithSession(t *testing.T) {
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &settings) != nil || settings.Currency != "IDR" || settings.Opening != 12345 || settings.TransactionEntryDefault != "scan" {
 		t.Fatalf("read: %d %s", w.Code, w.Body.String())
 	}
-	if w := request("PUT", `{"currency":"USD","locale":"en","openingBalance":12345,"transactionEntryDefault":"scan"}`); w.Code != 400 {
+	if w := request("PUT", `{"currency":"USD","locale":"en","openingBalance":12345,"transactionEntryDefault":"scan"}`); w.Code != 200 {
+		t.Fatalf("supported fractional currency rejected: %d %s", w.Code, w.Body.String())
+	}
+	if w := request("PUT", `{"currency":"EUR","locale":"en","openingBalance":12345,"transactionEntryDefault":"scan"}`); w.Code != 400 {
 		t.Fatalf("unsupported currency accepted: %d", w.Code)
 	}
 }

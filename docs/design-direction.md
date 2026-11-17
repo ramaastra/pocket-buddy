@@ -116,7 +116,7 @@ Pocket Buddy should feel playful, fun, and current. Avoid austere minimalism and
 
 
 - Every interactive control must be keyboard operable, have a visible focus state, and expose an accessible name and state.
-- For whole currency amounts, show digit grouping as the user types; grouping separators are automatic, and the caret stays with the same digit when formatting changes. Hide numeric steppers, and keep a composite amount control to one visible border with one focus state.
+- Show digit grouping as the user types and allow the selected currency's fractional digits; grouping separators are automatic, and the caret stays with the same digit when formatting changes. Hide numeric steppers, and keep a composite amount control to one visible border with one focus state.
 - When a form collects a cash amount, place its amount field before the other data fields.
 - Keep text and controls legible against their backgrounds. Do not rely on color alone to communicate validity, selection, or status.
 - Dialogs must move focus into the dialog when opened, keep keyboard focus inside while open, close with Escape when safe, and return focus to the control that opened them.

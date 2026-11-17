@@ -20,8 +20,7 @@ Pocket Buddy helps an individual understand and manage everyday income and expen
 
 ## Product decisions
 
-- Single currency per user, currently IDR. Other currencies need fractional amount support and a deliberate conversion workflow.
-- When currency changes become available, changing currency relabels existing amounts without conversion; warn the user clearly before applying the change.
+- One display currency per user, selected from IDR, USD, SGD, and AUD. Changing display currency relabels existing amounts without conversion; warn the user clearly before applying the change.
 - New accounts start empty. Do not automatically import or erase browser-local demo data; provide sample data in a separate demo account.
 - Weekly budgets start on Monday.
 - A monthly recurring schedule anchored to a day missing in a month occurs on that month's last day, then returns to its original day when available (for example, January 31, February 28, March 31).
@@ -35,4 +34,4 @@ Pocket Buddy helps an individual understand and manage everyday income and expen
 
 ## Current delivery status
 
-Signed-in accounts load categories, transactions, recently deleted records, budgets, opening balance, currency and language from the API. Manual transaction create, edit, delete and restore, dashboard calculations, filtered CSV export, and weekly/monthly expense budgets use those records. Budget spending uses the current calendar period; parent budgets include child-category spending, and parent and child budgets remain separate plans. New accounts start empty; the browser-local demo remains separate. Account screens currently support IDR only; fractional-currency entry and display need implementation before other currencies can be used safely. Signed-in users can manage recurring schedules and review due occurrences; confirmed occurrences become transactions. Signed-in screenshot extraction now returns editable Gemini drafts; only confirmed drafts are saved, and the source image is not persisted. Seeded demo accounts remain unfinished. The integration is local and is not production-ready.
+Signed-in accounts load categories, transactions, recently deleted records, budgets, opening balance, currency and language from the API. Manual transaction create, edit, delete and restore, dashboard calculations, filtered CSV export, and weekly/monthly expense budgets use those records. Budget spending uses the current calendar period; parent budgets include child-category spending, and parent and child budgets remain separate plans. New accounts start empty; the browser-local demo remains separate. Fractional-currency entry and display support IDR, USD, SGD, and AUD; changing currency relabels amounts after confirmation, without conversion. Signed-in users can manage recurring schedules and review due occurrences; confirmed occurrences become transactions. Signed-in screenshot extraction now returns editable Gemini drafts; only confirmed drafts are saved, and the source image is not persisted. Seeded demo accounts remain unfinished. The integration is local and is not production-ready.
