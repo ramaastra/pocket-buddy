@@ -724,7 +724,7 @@ export default function PocketBuddyApp() {
     <aside className="app-sidebar">
       <Link className="wordmark" href="/"><BrandMark/>pocket buddy</Link>
       <nav aria-label="Main navigation">{nav.map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={navItem?.href === href ? 'active' : ''}><Icon size={17}/><span>{label}</span></Link>)}</nav>
-      <Link className="sidebar-profile" href="/settings/account" aria-label={session ? `${session.user.name || session.user.email}, account and security` : 'Demo account, account and security'}><span className="profile-bubble">{avatarInitial(session)}</span><span><strong>{session ? session.user.name || session.user.email : 'Demo account'}</strong><small>{session ? 'Signed in' : 'Sample data'}</small></span><ChevronRight size={19} aria-hidden="true"/></Link>
+      <Link className="sidebar-profile" href="/settings/account" aria-label={session ? `${session.user.name || session.user.email}, account and security` : 'Demo account, account and security'}><span className="profile-bubble">{avatarInitial(session)}</span><span><strong>{session ? session.user.name || 'Your profile' : 'Demo account'}</strong><small>{session ? session.user.email : 'Sample data'}</small></span><ChevronRight size={19} aria-hidden="true"/></Link>
     </aside>
     <div className="app-workspace">
       <header className={`mobile-account-bar${hasScrolled ? ' is-scrolled' : ''}`}><Link className="wordmark" href="/"><BrandMark/>pocket buddy</Link><MobileAccountMenu session={session}/></header>

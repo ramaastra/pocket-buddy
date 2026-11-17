@@ -29,7 +29,7 @@ func seedDemoAccount(db *gorm.DB, email, password string) error {
 	userID := uuid.NewString()
 	verifiedAt := time.Now().UTC()
 	user := authUser{
-		ID: userID, Email: email, EmailVerifiedAt: &verifiedAt,
+		ID: userID, Email: email, Name: "Demo Account", EmailVerifiedAt: &verifiedAt,
 		PasswordHash: passwordHash, Currency: "IDR", Locale: "en",
 		Opening: 5_000_000, TransactionEntryDefault: "manual",
 	}
