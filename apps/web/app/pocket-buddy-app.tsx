@@ -577,12 +577,12 @@ export default function PocketBuddyApp() {
 
   async function addTransaction(tx: Omit<Transaction, 'id'>, id?: string) {
     if (session) {
-      try { const selectedCategory = tx.category ? data.categories.find((c) => c.kind === tx.kind && c.name === tx.category) : undefined; if (tx.category && !selectedCategory) throw new Error('Category is no longer available'); await apiRequest(id ? `/transactions/${id}` : '/transactions', { description: tx.name, kind: tx.kind, amount: tx.amount, date: tx.date, categoryId: selectedCategory?.id ?? null, merchant: tx.merchant || '', note: tx.note || '' }, session.csrfToken, id ? 'PUT' : 'POST'); try { await refreshAccount(session); } catch { setAccountError('Your transaction was saved, but your account could not be refreshed. Reload to continue.'); return; } setNotice(id ? 'Transaction updated' : 'Transaction saved'); navigate('/transactions'); } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not save transaction'); }
+      try { const selectedCategory = tx.category ? data.categories.find((c) => c.kind === tx.kind && c.name === tx.category) : undefined; if (tx.category && !selectedCategory) throw new Error('Category is no longer available'); await apiRequest(id ? `/transactions/${id}` : '/transactions', { description: tx.name, kind: tx.kind, amount: tx.amount, date: tx.date, categoryId: selectedCategory?.id ?? null, merchant: tx.merchant || '', note: tx.note || '' }, session.csrfToken, id ? 'PUT' : 'POST'); try { await refreshAccount(session); } catch { setAccountError('Your transaction was saved, but your account could not be refreshed. Reload to continue.'); return; } setNotice(id ? 'Transaction updated' : 'Transaction saved'); if (!id) navigate('/transactions'); } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not save transaction'); }
       return;
     }
     setData((old) => ({ ...old, transactions: id ? old.transactions.map((t) => t.id === id ? { ...tx, id } : t) : [{ ...tx, id: `t${Date.now()}` }, ...old.transactions] }));
     setNotice(id ? 'Transaction updated' : 'Transaction saved');
-    navigate('/transactions');
+    if (!id) navigate('/transactions');
   }
   async function addTransactions(items: Omit<Transaction, 'id'>[]) {
     if (!items.length) return;
@@ -653,7 +653,7 @@ export default function PocketBuddyApp() {
     setNotice('Category added'); navigate('/categories');
   }
   async function updateCategory(id: string, name: string, kind: Kind, parent: string, icon: string, color: string) {
-    if (session) { const parentId = parent ? data.categories.find((c) => c.kind === kind && c.name === parent)?.id : null; if (parent && !parentId) throw new Error('Parent category is no longer available'); await apiRequest(`/categories/${id}`, { name, kind, parentId, icon, color }, session.csrfToken, 'PUT'); try { await refreshAccount(session); } catch { setAccountError('Your category was saved, but your account could not be refreshed. Reload to continue.'); return; } setNotice('Category updated'); navigate('/categories'); return; }
+    if (session) { const parentId = parent ? data.categories.find((c) => c.kind === kind && c.name === parent)?.id : null; if (parent && !parentId) throw new Error('Parent category is no longer available'); await apiRequest(`/categories/${id}`, { name, kind, parentId, icon, color }, session.csrfToken, 'PUT'); try { await refreshAccount(session); } catch { setAccountError('Your category was saved, but your account could not be refreshed. Reload to continue.'); return; } setNotice('Category updated'); return; }
     setData((old) => {
       const original = old.categories.find((c) => c.id === id);
       if (!original) return old;
@@ -666,7 +666,7 @@ export default function PocketBuddyApp() {
         budgets: original.kind === 'expense' ? old.budgets.map((b) => b.category === original.name ? { ...b, category: updatedName } : b) : old.budgets,
       };
     });
-    setNotice('Category updated'); navigate('/categories');
+    setNotice('Category updated');
   }
   function exportCSV(ordered?: Transaction[]) {
     const rows = [['Date', 'Name', 'Kind', 'Category', 'Amount', 'Note'], ...(ordered || filteredTransactions).map((t) => [t.date, t.name, t.kind, t.category, String(t.amount), t.note ?? ''])];
