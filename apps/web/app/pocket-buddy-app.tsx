@@ -130,7 +130,8 @@ const nav = [
 
 function fmt(amount: number, currency = 'IDR') {
   const digits = new Intl.NumberFormat('en-US', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? 0;
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: digits }).format(amount / (10 ** digits)).replace('IDR', 'Rp');
+  const hasFraction = digits > 0 && Math.abs(amount) % (10 ** digits) !== 0;
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: hasFraction ? digits : 0, maximumFractionDigits: digits }).format(amount / (10 ** digits)).replace('IDR', 'Rp');
 }
 function formatAmount(value: string) {
   const [whole = '', fraction] = value.replace(/[^\d.]/g, '').split('.', 2);
