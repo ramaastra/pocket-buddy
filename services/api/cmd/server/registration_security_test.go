@@ -48,9 +48,12 @@ func TestRegistrationRequiresOwnerChosenPassword(t *testing.T) {
 		return w
 	}
 	email := uuid.NewString() + "@example.test"
-	registration := `{"email":"` + email + `","password":"attacker-password"}`
+	if w := req("/register", `{"email":"`+email+`","name":"   "}`); w.Code != 400 {
+		t.Fatalf("empty registration name accepted: %d", w.Code)
+	}
+	registration := `{"email":"` + email + `","name":"Test User","password":"attacker-password"}`
 	first := req("/register", registration)
-	duplicate := req("/register", `{"email":"`+email+`","password":"different-password"}`)
+	duplicate := req("/register", `{"email":"`+email+`","name":"Changed Name","password":"different-password"}`)
 	if first.Code != 201 || duplicate.Code != 201 || first.Body.String() != duplicate.Body.String() {
 		t.Fatal("registration responses differ")
 	}
@@ -58,7 +61,7 @@ func TestRegistrationRequiresOwnerChosenPassword(t *testing.T) {
 	if err := tx.Table("users").Where("email = ?", email).Take(&user).Error; err != nil {
 		t.Fatal(err)
 	}
-	if user.PasswordHash != pendingPasswordHash || user.EmailVerifiedAt != nil || verifyPassword("attacker-password", user.PasswordHash) {
+	if user.PasswordHash != pendingPasswordHash || user.EmailVerifiedAt != nil || user.Name != "Test User" || verifyPassword("attacker-password", user.PasswordHash) {
 		t.Fatal("pending account retained a supplied password")
 	}
 	var original struct{ ID string }
@@ -77,7 +80,7 @@ func TestRegistrationRequiresOwnerChosenPassword(t *testing.T) {
 	if err := tx.Exec("UPDATE auth_tokens SET token_hash=?, created_at=? WHERE id=?", secretHash("old-synthetic"), time.Now().UTC().Add(-2*time.Minute), original.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if w := req("/register", `{"email":"`+email+`"}`); w.Code != 201 {
+	if w := req("/register", `{"email":"`+email+`","name":"Test User"}`); w.Code != 201 {
 		t.Fatal("pending re-registration failed")
 	}
 	if w := req("/verify", `{"token":"old-synthetic","password":"owner-new-password"}`); w.Code != 400 {

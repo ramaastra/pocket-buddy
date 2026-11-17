@@ -43,7 +43,7 @@ func TestRegistrationAndAccountDeletionIntegration(t *testing.T) {
 	r := gin.New()
 	r.POST("/register", registerAccount(tx, "http://test"))
 	email := uuid.NewString() + "@example.test"
-	body := `{"email":"` + email + `"}`
+	body := `{"email":"` + email + `","name":"Test User"}`
 	request := func(method, path, payload string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, path, strings.NewReader(payload))
 		req.Header.Set("Content-Type", "application/json")

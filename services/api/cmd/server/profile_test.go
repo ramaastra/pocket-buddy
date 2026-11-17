@@ -46,8 +46,8 @@ func TestSettingsWithSession(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	registerProfileRoutes(r, tx, "http://test")
-	request := func(method, body string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(method, "/api/settings", strings.NewReader(body))
+	request := func(method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Origin", "http://test")
 		req.Header.Set("X-CSRF-Token", "csrf")
@@ -57,10 +57,10 @@ func TestSettingsWithSession(t *testing.T) {
 		r.ServeHTTP(w, req)
 		return w
 	}
-	if w := request("PUT", `{"currency":"IDR","locale":"en","openingBalance":12345,"transactionEntryDefault":"scan"}`); w.Code != 200 {
+	if w := request("PUT", "/api/settings", `{"currency":"IDR","locale":"en","openingBalance":12345,"transactionEntryDefault":"scan"}`); w.Code != 200 {
 		t.Fatalf("update: %d %s", w.Code, w.Body.String())
 	}
-	w := request("GET", "")
+	w := request("GET", "/api/settings", "")
 	var settings struct {
 		Currency                string `json:"currency"`
 		Opening                 int64  `json:"openingBalance"`
@@ -69,10 +69,20 @@ func TestSettingsWithSession(t *testing.T) {
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &settings) != nil || settings.Currency != "IDR" || settings.Opening != 12345 || settings.TransactionEntryDefault != "scan" {
 		t.Fatalf("read: %d %s", w.Code, w.Body.String())
 	}
-	if w := request("PUT", `{"currency":"USD","locale":"en","openingBalance":12345,"transactionEntryDefault":"scan"}`); w.Code != 200 {
+	if w := request("PUT", "/api/settings", `{"currency":"USD","locale":"en","openingBalance":12345,"transactionEntryDefault":"scan"}`); w.Code != 200 {
 		t.Fatalf("supported fractional currency rejected: %d %s", w.Code, w.Body.String())
 	}
-	if w := request("PUT", `{"currency":"EUR","locale":"en","openingBalance":12345,"transactionEntryDefault":"scan"}`); w.Code != 400 {
+	if w := request("PUT", "/api/settings", `{"currency":"EUR","locale":"en","openingBalance":12345,"transactionEntryDefault":"scan"}`); w.Code != 400 {
 		t.Fatalf("unsupported currency accepted: %d", w.Code)
+	}
+	if w := request("PUT", "/api/profile", `{"name":"Rama Astra"}`); w.Code != 200 {
+		t.Fatalf("profile name update: %d %s", w.Code, w.Body.String())
+	}
+	if w := request("PUT", "/api/profile", `{"name":"   "}`); w.Code != 400 {
+		t.Fatalf("empty profile name accepted: %d", w.Code)
+	}
+	var name string
+	if err := tx.Table("users").Select("name").Where("id = ?", id).Scan(&name).Error; err != nil || name != "Rama Astra" {
+		t.Fatalf("empty name changed saved profile: %q, %v", name, err)
 	}
 }
