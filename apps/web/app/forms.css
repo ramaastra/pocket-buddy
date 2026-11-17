@@ -11,6 +11,7 @@
 .segmented-control button.selected{color:#f4f8f4}
 .segmented-control button.expense-selected{border-color:rgba(255,180,155,.13);background:rgba(248,155,126,.12);color:#ffd0bc}
 .segmented-control button.income-selected{border-color:rgba(190,241,141,.15);background:rgba(180,236,128,.12);color:#d7ffad}
+.field .segmented-control{margin-bottom:0}
 .field{margin-bottom:16px;display:grid;gap:7px}
 .field>span{color:#dce6de;font-size:12px;font-weight:620}
 .field .required-marker{color:var(--green);font-weight:700}
@@ -62,6 +63,10 @@
 .amount-input input:focus{border:0;box-shadow:none}
 .amount-input:focus-within{border-color:rgba(150,232,189,.56);box-shadow:0 0 0 3px rgba(119,211,157,.09)}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 13px}
+.category-form-fields.creating{grid-template-columns:repeat(3,minmax(0,1fr))}
+.category-form-fields.editing{grid-template-columns:repeat(2,minmax(0,1fr))}
+.category-form-fields>.field{min-width:0}
+@media(max-width:720px){.category-form-fields.creating{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .budget-detail form>.field{width:calc((100% - 13px)/2);min-width:0}
 .form-actions{margin-top:19px;display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}
 .form-aside{display:grid;gap:13px}
@@ -116,7 +121,7 @@
   .form-intro>div{flex:1;min-width:0}
   .form-intro>.ui-button{margin-left:0}
 }
-@media(max-width:620px){.category-item>.category-name{flex-wrap:wrap;gap:0 4px}.category-name .category-stats{flex-basis:100%;margin-left:0}}
+@media(max-width:620px){.category-form-fields.creating,.category-form-fields.editing{grid-template-columns:minmax(0,1fr)}.category-item>.category-name{flex-wrap:wrap;gap:0 4px}.category-name .category-stats{flex-basis:100%;margin-left:0}}
 
 .child-category{padding-left:38px}.child-category::after{position:absolute;top:-1px;bottom:0;left:14px;width:15px;content:"";border-left:1px solid rgba(194,241,143,.24);background:linear-gradient(rgba(194,241,143,.24),rgba(194,241,143,.24)) left center / 15px 1px no-repeat;pointer-events:none}.child-category:not(:has(+ .child-category))::after{bottom:50%;background:none;border-bottom:1px solid rgba(194,241,143,.24);border-bottom-left-radius:6px}.child-category strong{color:#b9c8bd;font-weight:550}
 .child-category + .child-category{border-top-color:transparent;background:linear-gradient(rgba(224,242,228,.075),rgba(224,242,228,.075)) right top / calc(100% - 38px) 1px no-repeat}
@@ -126,3 +131,5 @@
 .transactions-ledger > .empty-state { flex:0 0 auto; }
 
 .draft-review-fields .draft-note-field{grid-column:1/-1}
+
+.commit-review-dialog>p.occurrence-review-hint{margin:0 1px 12px}
